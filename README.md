@@ -52,7 +52,7 @@ visual-based-virtual-fitness-coach/
 首先，克隆项目到本地：
 
 ```
-git clone https://gitee.com/Snake-Konginchrist/visual-based-virtual-fitness-coach.git
+git clone https://github.com/Annsher-whhr/visual-based-virtual-fitness-coach
 cd visual-based-virtual-fitness-coach
 ```
 
@@ -100,15 +100,6 @@ python main.py
 
 感谢所有开源项目和库的作者，他们的工作为本项目的开发提供了巨大帮助。
 
-## 联系方式
-- GitHub: [Snake-Konginchrist](https://github.com/Snake-Konginchrist)
-- Gitee: [Snake-Konginchrist](https://gitee.com/Snake-Konginchrist)
-- 邮箱（开发者）: [developer@skstudio.cn](mailto:developer@skstudio.cn)
-- 邮箱（商务合作）：[contact@skstudio.cn](mailto:contact@skstudio.cn)
-- 官方网站（中国）: [彩旗工作室](https://www.skstudio.cn)
-- 官方网站（国际）: [SK Studio](https://www.sihuangtech.com)
-- 彩旗开源交流QQ群：1022820973
-
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Snake-Konginchrist/visual-based-virtual-fitness-coach&type=Date)](https://www.star-history.com/#Snake-Konginchrist/visual-based-virtual-fitness-coach&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Annsher-whhr/visual-based-virtual-fitness-coach&type=Date)](https://www.star-history.com/#Annsher-whhr/visual-based-virtual-fitness-coach&Date)
