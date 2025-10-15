@@ -9,6 +9,7 @@ from src.detection import detect_human
 from src.feedback import provide_feedback
 from src.pose_estimation_v2 import estimate_pose
 from utils.utils import draw_chinese_text
+from src.ai_worker import submit_metrics, get_latest_advice
 
 
 def main():
@@ -40,16 +41,25 @@ def main():
 
         # 检测人体
         frame_with_detection = detect_human(frame)
+        # 姿态估计（返回绘制帧与关键点结果）
+        pose_estimated_frame, results = estimate_pose(frame_with_detection)
 
-        # 姿态估计
-        pose_estimated_frame = estimate_pose(frame_with_detection)
+        # 动作识别（基于关键点结果）
+        action_result = recognize_action(results)
 
-        # 动作识别
-        action = recognize_action(pose_estimated_frame)
-
-        # 提供反馈
-        feedback = provide_feedback(action)
+        # 提供本地即时反馈
+        feedback = provide_feedback(action_result)
         print(feedback)
+
+        # 如果是抬膝动作，异步提交给 AI（不阻塞主循环）
+        if isinstance(action_result, dict) and action_result.get('action') == 'knee_raise':
+            submit_metrics(action_result.get('metrics', {}))
+
+        # 检查是否有 AI 返回的最新建议（若有则覆盖反馈）
+        ai_advice = get_latest_advice()
+        if ai_advice:
+            feedback = ai_advice
+            print(f"AI advice: {feedback}")
 
         # 显示结果
         cv2.imshow('Fitness Coach', pose_estimated_frame)

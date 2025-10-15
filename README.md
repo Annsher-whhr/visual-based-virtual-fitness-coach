@@ -67,7 +67,8 @@ pip install -r requirements.txt
 启动智能健身指导系统：
 
 ```
-python main.py
+使用摄像头：python .\main.py
+使用本地视频：python .\main.py --video "D:\vscode python\3d\visual-based-virtual-fitness-coach\jianshen1.mp4"
 ```
 
 ## 使用说明

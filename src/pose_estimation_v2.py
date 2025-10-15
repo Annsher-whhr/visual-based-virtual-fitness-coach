@@ -111,4 +111,5 @@ def estimate_pose(frame):
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 cv2.circle(frame, (cx, cy), 3, (0, 255, 0), -1)
 
-    return frame
+    # 返回绘制过的帧和 MediaPipe 的结果对象，便于动作识别模块使用关键点信息
+    return frame, results
