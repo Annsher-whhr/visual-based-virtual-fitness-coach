@@ -52,7 +52,7 @@ visual-based-virtual-fitness-coach/
 首先，克隆项目到本地：
 
 ```
-git clone https://github.com/Annsher-whhr/visual-based-virtual-fitness-coach
+git clone https://github.com/Annsher-whhr/based-virtual-fitness-coach
 cd visual-based-virtual-fitness-coach
 ```
 
