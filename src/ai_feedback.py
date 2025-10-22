@@ -40,7 +40,21 @@ def call_deepseek_feedback(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     try:
-        resp = requests.post(API_URL, headers=headers, json=payload, timeout=5)
+        # debug: print payload summary (without API key)
+        try:
+            print('[AI DEBUG] Sending payload:', json.dumps(payload, ensure_ascii=False))
+        except Exception:
+            print('[AI DEBUG] Sending payload (could not serialize)')
+
+        # increase timeout to 15s to allow slower responses
+        resp = requests.post(API_URL, headers=headers, json=payload, timeout=15)
+        # debug: print response status and text
+        try:
+            print(f"[AI DEBUG] Response status: {resp.status_code}")
+            print('[AI DEBUG] Response text:', resp.text)
+        except Exception:
+            print('[AI DEBUG] Response received but failed to print content')
+
         resp.raise_for_status()
         data = resp.json()
         # deepseek 返回结构中通常包含 choices -> message -> content

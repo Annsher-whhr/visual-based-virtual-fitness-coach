@@ -88,16 +88,42 @@ def recognize_action(results) -> Dict[str, Any]:
     correct = False
     reason = ''
     metrics = {
-        'left_knee_y': left_knee.y,
-        'left_hip_y': left_hip.y,
-        'left_knee_angle': left_knee_angle,
-        'right_knee_y': right_knee.y,
-        'right_hip_y': right_hip.y,
-        'right_knee_angle': right_knee_angle,
-        'torso_angle': torso_angle,
-        'torso_vx': torso_vx,
-        'torso_vy': torso_vy,
-    }
+    # 左膝盖关键点的y坐标（MediaPipe坐标系，向下增大）
+    # 用于判断左膝是否抬起（膝盖y值小于髋部y值表示抬起）
+    'left_knee_y': left_knee.y,
+    
+    # 左髋部关键点的y坐标（MediaPipe坐标系，向下增大）
+    # 作为参照点，与膝盖y坐标比较判断抬腿动作
+    'left_hip_y': left_hip.y,
+    
+    # 左膝角度（度数），由左髋-左膝-左踝三点形成的夹角
+    # 角度小于160°表示膝盖弯曲，用于确认抬腿动作
+    'left_knee_angle': left_knee_angle,
+    
+    # 右膝盖关键点的y坐标（MediaPipe坐标系，向下增大）
+    # 用于判断右膝是否抬起
+    'right_knee_y': right_knee.y,
+    
+    # 右髋部关键点的y坐标（MediaPipe坐标系，向下增大）
+    # 作为参照点，与膝盖y坐标比较判断抬腿动作
+    'right_hip_y': right_hip.y,
+    
+    # 右膝角度（度数），由右髋-右膝-右踝三点形成的夹角
+    # 角度小于160°表示膝盖弯曲，用于确认抬腿动作
+    'right_knee_angle': right_knee_angle,
+    
+    # 躯干与竖直向上方向的夹角（度数）
+    # 用于评估动作质量，角度小于25°表示躯干保持直立
+    'torso_angle': torso_angle,
+    
+    # 躯干向量的x分量（从髋部中点指向肩部中点）
+    # 用于计算躯干角度和判断身体倾斜方向
+    'torso_vx': torso_vx,
+    
+    # 躯干向量的y分量（从髋部中点指向肩部中点）
+    # 用于计算躯干角度和判断身体倾斜方向
+    'torso_vy': torso_vy,
+}
 
     # 优先判断双侧是否同时抬高（这里优先取单侧抬膝）
     if left_knee_raised and not right_knee_raised:
