@@ -30,125 +30,107 @@ def _angle_with_vertical_up(x, y):
 
 
 def recognize_action(results) -> Dict[str, Any]:
-    """识别是否为抬膝（knee raise）动作，并判断是否标准。
+    """计算丰富的太极起势/收势相关 metrics 并返回 metrics 字典（不作判定）。
 
-    返回结构化字典，示例：
-    {
-      'action': 'knee_raise' or 'none',
-      'side': 'left'/'right'/None,
-      'correct': True/False,
-      'reason': '短文本说明原因',
-      'metrics': {...}
-    }
+    输出仅包含数值型/尺度化的度量，便于后续单独做判定或传给 AI。
+    如果未检测到人体或关键点缺失，则返回空 dict。
     """
     if not results or not results.pose_landmarks:
-        return {'action': 'none', 'side': None, 'correct': False, 'reason': '未检测到人体', 'metrics': {}}
+        return {}
 
     lm = results.pose_landmarks.landmark
     P = mp.solutions.pose.PoseLandmark
 
-    # 读取左右髋、膝、踝
-    left_hip = lm[P.LEFT_HIP.value]
-    left_knee = lm[P.LEFT_KNEE.value]
-    left_ankle = lm[P.LEFT_ANKLE.value]
+    # 主要关键点（使用安全访问）
+    def safe(i):
+        return lm[i.value]
 
-    right_hip = lm[P.RIGHT_HIP.value]
-    right_knee = lm[P.RIGHT_KNEE.value]
-    right_ankle = lm[P.RIGHT_ANKLE.value]
+    L_sh = safe(P.LEFT_SHOULDER)
+    R_sh = safe(P.RIGHT_SHOULDER)
+    L_hip = safe(P.LEFT_HIP)
+    R_hip = safe(P.RIGHT_HIP)
+    L_knee = safe(P.LEFT_KNEE)
+    R_knee = safe(P.RIGHT_KNEE)
+    L_ank = safe(P.LEFT_ANKLE)
+    R_ank = safe(P.RIGHT_ANKLE)
+    L_wrist = safe(P.LEFT_WRIST)
+    R_wrist = safe(P.RIGHT_WRIST)
+    L_elbow = safe(P.LEFT_ELBOW)
+    R_elbow = safe(P.RIGHT_ELBOW)
+    nose = safe(P.NOSE)
 
-    # 基本高度判断（注意：坐标系中 y 值向下增大，抬高时 y 更小）
-    # 放宽阈值，并增加基于膝角的判断以适配侧面/正面视角
-    vertical_thresh = 0.04
-    knee_angle_thresh = 160.0  # 膝角小于此值视为弯曲（抬膝的一种表现）
+    # 基础尺寸/距离（使用归一化坐标，0..1）
+    shoulder_width = abs(L_sh.x - R_sh.x)
+    hip_width = abs(L_hip.x - R_hip.x)
+    foot_distance = abs(L_ank.x - R_ank.x)
+    hand_distance = math.hypot(L_wrist.x - R_wrist.x, L_wrist.y - R_wrist.y)
+    shoulder_to_hip_y = abs(((L_sh.y + R_sh.y) / 2.0) - ((L_hip.y + R_hip.y) / 2.0))
 
-    left_knee_angle = _angle(left_hip, left_knee, left_ankle)
-    right_knee_angle = _angle(right_hip, right_knee, right_ankle)
+    # 角度度量
+    left_knee_angle = _angle(L_hip, L_knee, L_ank)
+    right_knee_angle = _angle(R_hip, R_knee, R_ank)
+    left_elbow_angle = _angle(L_sh, L_elbow, L_wrist)
+    right_elbow_angle = _angle(R_sh, R_elbow, R_wrist)
+    left_shoulder_angle = _angle(L_hip, L_sh, L_elbow)
+    right_shoulder_angle = _angle(R_hip, R_sh, R_elbow)
 
-    left_knee_raised = (left_knee.y + vertical_thresh < left_hip.y) or (left_knee_angle < knee_angle_thresh)
-    right_knee_raised = (right_knee.y + vertical_thresh < right_hip.y) or (right_knee_angle < knee_angle_thresh)
-
-    # 计算躯干倾斜（肩中点到髋中点向量与竖直向上向量的夹角）作为稳定性参考
-    left_shoulder = lm[P.LEFT_SHOULDER.value]
-    right_shoulder = lm[P.RIGHT_SHOULDER.value]
-    # 中点坐标（简单使用 float），避免依赖 landmark 类型构造
-    mid_shoulder_x = (left_shoulder.x + right_shoulder.x) / 2.0
-    mid_shoulder_y = (left_shoulder.y + right_shoulder.y) / 2.0
-    mid_hip_x = (left_hip.x + right_hip.x) / 2.0
-    mid_hip_y = (left_hip.y + right_hip.y) / 2.0
-
-    # torso vector from hip -> shoulder
-    torso_vx = mid_shoulder_x - mid_hip_x
-    torso_vy = mid_shoulder_y - mid_hip_y
-
-    # angle between torso vector and vertical-up (0,-1): smaller means closer to upright
+    # 躯干向量与竖直角度
+    mid_sh_x = (L_sh.x + R_sh.x) / 2.0
+    mid_sh_y = (L_sh.y + R_sh.y) / 2.0
+    mid_hip_x = (L_hip.x + R_hip.x) / 2.0
+    mid_hip_y = (L_hip.y + R_hip.y) / 2.0
+    torso_vx = mid_sh_x - mid_hip_x
+    torso_vy = mid_sh_y - mid_hip_y
     torso_angle = _angle_with_vertical_up(torso_vx, torso_vy)
 
-    action = 'none'
-    side = None
-    correct = False
-    reason = ''
+    # 手臂高度比（归一化）：0=臀部线，1=肩部线
+    shoulder_y = (L_sh.y + R_sh.y) / 2.0
+    hip_y = (L_hip.y + R_hip.y) / 2.0
+    avg_wrist_y = (L_wrist.y + R_wrist.y) / 2.0
+    arm_height_ratio = None
+    if abs(shoulder_y - hip_y) > 1e-6:
+        arm_height_ratio = 1.0 - ((avg_wrist_y - hip_y) / (shoulder_y - hip_y))
+
+    # 上下肢对称性（横向）
+    shoulder_balance = (L_sh.x - mid_sh_x, R_sh.x - mid_sh_x)
+    hip_balance = (L_hip.x - mid_hip_x, R_hip.x - mid_hip_x)
+
+    # 头部/鼻子相对中线偏移（用于判断身体是否转向/偏离）
+    person_mid_x = (mid_sh_x + mid_hip_x) / 2.0
+    nose_center_offset = nose.x - person_mid_x
+
+    # 关键点平均可见性（如果 landmark 有 visibility 字段则统计）
+    vis_vals = []
+    for p in (L_sh, R_sh, L_hip, R_hip, L_knee, R_knee, L_ank, R_ank, L_wrist, R_wrist):
+        v = getattr(p, 'visibility', None)
+        if v is not None:
+            vis_vals.append(v)
+    avg_visibility = sum(vis_vals) / len(vis_vals) if vis_vals else None
+
+    # 复合尺度（可直接当作特征向量）
     metrics = {
-    # 左膝盖关键点的y坐标（MediaPipe坐标系，向下增大）
-    # 用于判断左膝是否抬起（膝盖y值小于髋部y值表示抬起）
-    'left_knee_y': left_knee.y,
-    
-    # 左髋部关键点的y坐标（MediaPipe坐标系，向下增大）
-    # 作为参照点，与膝盖y坐标比较判断抬腿动作
-    'left_hip_y': left_hip.y,
-    
-    # 左膝角度（度数），由左髋-左膝-左踝三点形成的夹角
-    # 角度小于160°表示膝盖弯曲，用于确认抬腿动作
-    'left_knee_angle': left_knee_angle,
-    
-    # 右膝盖关键点的y坐标（MediaPipe坐标系，向下增大）
-    # 用于判断右膝是否抬起
-    'right_knee_y': right_knee.y,
-    
-    # 右髋部关键点的y坐标（MediaPipe坐标系，向下增大）
-    # 作为参照点，与膝盖y坐标比较判断抬腿动作
-    'right_hip_y': right_hip.y,
-    
-    # 右膝角度（度数），由右髋-右膝-右踝三点形成的夹角
-    # 角度小于160°表示膝盖弯曲，用于确认抬腿动作
-    'right_knee_angle': right_knee_angle,
-    
-    # 躯干与竖直向上方向的夹角（度数）
-    # 用于评估动作质量，角度小于25°表示躯干保持直立
-    'torso_angle': torso_angle,
-    
-    # 躯干向量的x分量（从髋部中点指向肩部中点）
-    # 用于计算躯干角度和判断身体倾斜方向
-    'torso_vx': torso_vx,
-    
-    # 躯干向量的y分量（从髋部中点指向肩部中点）
-    # 用于计算躯干角度和判断身体倾斜方向
-    'torso_vy': torso_vy,
-}
+        'shoulder_width': shoulder_width,
+        'hip_width': hip_width,
+        'foot_distance': foot_distance,
+        'hand_distance': hand_distance,
+        'shoulder_to_hip_y': shoulder_to_hip_y,
+        'left_knee_angle': left_knee_angle,
+        'right_knee_angle': right_knee_angle,
+        'left_elbow_angle': left_elbow_angle,
+        'right_elbow_angle': right_elbow_angle,
+        'left_shoulder_angle': left_shoulder_angle,
+        'right_shoulder_angle': right_shoulder_angle,
+        'knee_bend_average': (180 - (left_knee_angle + right_knee_angle) / 2.0),
+        'torso_angle': torso_angle,
+        'torso_vx': torso_vx,
+        'torso_vy': torso_vy,
+        'arm_height_ratio': arm_height_ratio,
+        'shoulder_balance_left': shoulder_balance[0],
+        'shoulder_balance_right': shoulder_balance[1],
+        'hip_balance_left': hip_balance[0],
+        'hip_balance_right': hip_balance[1],
+        'nose_center_offset': nose_center_offset,
+        'avg_visibility': avg_visibility,
+    }
 
-    # 优先判断双侧是否同时抬高（这里优先取单侧抬膝）
-    if left_knee_raised and not right_knee_raised:
-        action = 'knee_raise'
-        side = 'left'
-    elif right_knee_raised and not left_knee_raised:
-        action = 'knee_raise'
-        side = 'right'
-    elif left_knee_raised and right_knee_raised:
-        # 双膝同时抬高也视为抬膝，但标记为双侧
-        action = 'knee_raise'
-        side = 'both'
-
-    if action == 'knee_raise':
-        # 判断标准：膝盖抬高（已经满足），且躯干接近竖直向上（torso_angle 越小越直立）
-        # 放宽躯干容差以适配不同视角
-        torso_thresh = 25.0
-        if torso_angle < torso_thresh:
-            correct = True
-            reason = '抬膝动作标准'
-        else:
-            correct = False
-            reason = '上半身倾斜，请保持躯干直立'
-    else:
-        correct = False
-        reason = '未检测到抬膝动作'
-
-    return {'action': action, 'side': side, 'correct': correct, 'reason': reason, 'metrics': metrics}
+    return metrics

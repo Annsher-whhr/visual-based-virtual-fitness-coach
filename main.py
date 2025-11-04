@@ -44,16 +44,36 @@ def main():
         # 姿态估计（返回绘制帧与关键点结果）
         pose_estimated_frame, results = estimate_pose(frame_with_detection)
 
-        # 动作识别（基于关键点结果）
-        action_result = recognize_action(results)
 
-        # 提供本地即时反馈
-        feedback = provide_feedback(action_result)
+        # 动作识别（基于关键点结果） - 现在返回的是 metrics dict
+        metrics = recognize_action(results)
+
+        # 提供本地即时反馈（rules-based），provide_feedback 已兼容 metrics dict
+        feedback = provide_feedback(metrics)
         print(feedback)
 
-        # 如果是抬膝动作，异步提交给 AI（不阻塞主循环）
-        if isinstance(action_result, dict) and action_result.get('action') == 'knee_raise':
-            submit_metrics(action_result.get('metrics', {}))
+        # 简单启势候选判定：当手臂高度、躯干角度和手间距满足起势特征时，提交给 AI 异步处理
+        def is_tai_chi_start_candidate(m):
+            if not isinstance(m, dict):
+                return False
+            arm_h = m.get('arm_height_ratio')
+            torso_a = m.get('torso_angle')
+            hand_d = m.get('hand_distance')
+            sh_w = m.get('shoulder_width')
+            vis = m.get('avg_visibility')
+            # 基本阈值（可以后续调优）
+            if arm_h is None or torso_a is None or hand_d is None or sh_w is None:
+                return False
+            if vis is not None and vis < 0.35:
+                return False
+            if arm_h >= 0.30 and arm_h <= 0.85 and torso_a <= 22.0:
+                ratio = hand_d / (sh_w + 1e-6)
+                if ratio >= 0.35 and ratio <= 1.6:
+                    return True
+            return False
+
+        if is_tai_chi_start_candidate(metrics):
+            submit_metrics(metrics)
 
         # 检查是否有 AI 返回的最新建议（若有则覆盖反馈）
         ai_advice = get_latest_advice()
