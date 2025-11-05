@@ -104,46 +104,160 @@ def main():
             from taichi_ai.predict import predict_quality
 
             def candidate_score(m):
+                # 更细致的评分：返回浮点分数范围近似 0..10，较高的分数表示更接近理想的起势帧
                 if not isinstance(m, dict):
-                    return 0
-                s = 0
+                    return 0.0
+                eps = 1e-6
+
+                vis = m.get('avg_visibility', 0.0) or 0.0
+                # 可见度过低直接返回0
+                if vis < 0.25:
+                    return 0.0
+
+                score = 0.0
+
+                # 1) 可见度贡献（0..2）——保证可见度越高越可靠
+                vis_score = max(0.0, (vis - 0.25) / (1.0 - 0.25))
+                score += 2.0 * vis_score
+
+                # 2) 手臂高度比（arm_height_ratio），目标约为 0.6（0..1 normalized），权重 3
                 arm_h = m.get('arm_height_ratio')
+                if arm_h is not None:
+                    arm_score = max(0.0, 1.0 - abs(arm_h - 0.6) / 0.6)
+                    score += 3.0 * arm_score
+
+                # 3) 躯干角度（越小越好），权重 2
                 torso_a = m.get('torso_angle')
+                if torso_a is not None:
+                    torso_score = max(0.0, 1.0 - float(torso_a) / 45.0)
+                    score += 2.0 * torso_score
+
+                # 4) 手间距 / 肩宽比，目标约 0.75，权重 1.5
                 hand_d = m.get('hand_distance')
                 sh_w = m.get('shoulder_width')
-                vis = m.get('avg_visibility')
-                if vis is not None and vis < 0.35:
-                    return 0
-                if arm_h is not None and 0.30 <= arm_h <= 0.85:
-                    s += 1
-                if torso_a is not None and torso_a <= 22.0:
-                    s += 1
-                if hand_d is not None and sh_w is not None:
-                    ratio = hand_d / (sh_w + 1e-6)
-                    if 0.35 <= ratio <= 1.6:
-                        s += 1
-                return s
+                if hand_d is not None and sh_w is not None and sh_w > eps:
+                    ratio = float(hand_d) / (float(sh_w) + eps)
+                    ratio_score = max(0.0, 1.0 - abs(ratio - 0.75) / 1.5)
+                    score += 1.5 * ratio_score
+
+                # 5) 站位（脚距 / 臀宽），目标约 1.0，权重 1.0
+                foot_d = m.get('foot_distance')
+                hip_w = m.get('hip_width')
+                if foot_d is not None and hip_w is not None and hip_w > eps:
+                    fd_ratio = float(foot_d) / (float(hip_w) + eps)
+                    fd_score = max(0.0, 1.0 - abs(fd_ratio - 1.0) / 1.0)
+                    score += 1.0 * fd_score
+
+                # 6) 肘部角度（越接近伸直越好，目标约160度），综合左右肘，权重 0.5
+                le = m.get('left_elbow_angle')
+                re = m.get('right_elbow_angle')
+                elbow_scores = []
+                for ang in (le, re):
+                    if ang is not None:
+                        elbow_scores.append(max(0.0, 1.0 - abs(float(ang) - 160.0) / 60.0))
+                if elbow_scores:
+                    score += 0.5 * (sum(elbow_scores) / len(elbow_scores))
+
+                # 最终结果，保留三位小数
+                return round(float(score), 3)
 
             # 如果总帧数少于4，则无法预测
             if len(metrics_list) < 4:
                 print('视频帧数不足，无法生成 4 帧特征用于预测。')
                 return
 
-            # 滑动窗口选择得分最高的连续 4 帧序列
-            best_idx = 0
-            best_score = -1
-            for i in range(0, len(metrics_list) - 3):
-                score = sum(candidate_score(m) for m in metrics_list[i:i+4])
-                if score > best_score:
-                    best_score = score
-                    best_idx = i
+            # 新的帧选择策略：先找出多个高质量段（优先选择质量最好最多 4 段），然后从每个段中各选 1 帧。
+            # 如果没有足够长的高质量段，则挑选分散的高分帧（保证最小间隔），最后回退到均匀采样。
+            def select_frames_for_prediction(metrics_list):
+                """
+                策略：首先识别出所有高质量连续段（每帧 score >= seg_thresh），
+                按段的质量排序并选择最多 4 段（优先长且平均分高的段），
+                然后从每个段中选一个代表帧（段内得分最高帧）。
 
-            # 如果最高分为0（无明显候选），则均匀采样 4 帧
-            if best_score <= 0:
-                indices = [int(len(metrics_list) * (j+0.5) / 4.0) for j in range(4)]
-            else:
-                indices = list(range(best_idx, best_idx+4))
+                如果段数量不足 4：
+                - 先从最高分的段中各自选一帧（每段至多一帧），
+                - 然后在剩余帧中按分散策略补齐至 4 帧（保证最小时间间隔）。
 
+                最终返回按时间升序的 4 个帧索引。
+                """
+                scores = [candidate_score(m) for m in metrics_list]
+                n = len(scores)
+
+                # 参数（可调）
+                seg_thresh = 2
+                min_seg_len = 1  # 段长至少为1，以便捕获短但可靠的动作片段
+                max_segments = 4
+
+                # 找出得分>=阈值的连续段
+                segments = []  # 列表条目为 (s, e)
+                start = None
+                for i, sc in enumerate(scores):
+                    if sc >= seg_thresh:
+                        if start is None:
+                            start = i
+                    else:
+                        if start is not None:
+                            segments.append((start, i - 1))
+                            start = None
+                if start is not None:
+                    segments.append((start, n - 1))
+
+                # 为每个段计算质量分并排序（优先长度、其次平均分）
+                seg_info = []
+                for (s, e) in segments:
+                    length = e - s + 1
+                    if length < min_seg_len:
+                        continue
+                    avg = sum(scores[s:e+1]) / length
+                    quality = length * (1 + avg)
+                    seg_info.append((quality, s, e, length, avg))
+
+                seg_info.sort(reverse=True, key=lambda x: x[0])
+
+                picked_indices = []
+
+                # 从每个优先段中选 1 帧：选择段内得分最高的帧（代表性强）
+                for info in seg_info[:max_segments]:
+                    _, s, e, _, _ = info
+                    # 找到段内得分最高的索引（若并列取中间那个）
+                    best_idx = s
+                    best_sc = scores[s]
+                    for i in range(s, e + 1):
+                        if scores[i] > best_sc:
+                            best_sc = scores[i]
+                            best_idx = i
+                    picked_indices.append(best_idx)
+
+                # 若选到的段少于 4，则在剩余帧中按分散策略补齐
+                if len(picked_indices) < 4:
+                    remaining_slots = 4 - len(picked_indices)
+                    already = set(picked_indices)
+                    # 构建候选：排除已选择的帧后按得分降序
+                    candidates = [i for i in sorted(range(n), key=lambda i: scores[i], reverse=True) if i not in already and scores[i] > 0]
+                    # 保证最小时间间隔，基于视频长度自适应
+                    min_gap = max(1, n // 12)
+                    for idx in candidates:
+                        if all(abs(idx - p) >= min_gap for p in picked_indices):
+                            picked_indices.append(idx)
+                        if len(picked_indices) >= 4:
+                            break
+
+                    # 最后若仍不足，用均匀采样补齐（避免重复）
+                    if len(picked_indices) < 4:
+                        for ai in [int(round((n - 1) * (i + 0.5) / 4.0)) for i in range(4)]:
+                            if ai not in picked_indices:
+                                picked_indices.append(ai)
+                            if len(picked_indices) >= 4:
+                                break
+
+                # 保证唯一并按时间排序，裁剪到 4
+                picked = sorted(list(dict.fromkeys(picked_indices)))[:4]
+                if len(picked) < 4:
+                    # 极端回退：均匀采样
+                    picked = [int(round((n - 1) * (i + 0.5) / 4.0)) for i in range(4)]
+                return picked
+
+            indices = select_frames_for_prediction(metrics_list)
             selected_frames = [metrics_list[i] for i in indices]
             print(f"Selected frame indices for prediction: {indices}")
             pred = predict_quality(selected_frames)
