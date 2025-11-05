@@ -41,6 +41,7 @@ def main():
 
     metrics_list = []
     frames_for_display = []
+    _predicted_once = False
 
     def is_tai_chi_start_candidate(m):
         if not isinstance(m, dict):
@@ -257,11 +258,16 @@ def main():
                     picked = [int(round((n - 1) * (i + 0.5) / 4.0)) for i in range(4)]
                 return picked
 
-            indices = select_frames_for_prediction(metrics_list)
-            selected_frames = [metrics_list[i] for i in indices]
-            print(f"Selected frame indices for prediction: {indices}")
-            pred = predict_quality(selected_frames)
-            print('模型预测结果：', pred)
+            if _predicted_once:
+                print('预测已执行过一次，跳过重复预测。')
+            else:
+                indices = select_frames_for_prediction(metrics_list)
+                selected_frames = [metrics_list[i] for i in indices]
+                print(f"Selected frame indices for prediction: {indices}")
+                print('即将调用模型预测...')
+                pred = predict_quality(selected_frames)
+                print('模型预测结果：', pred)
+                _predicted_once = True
         except Exception as e:
             print('调用模型预测时出错：', e)
 
