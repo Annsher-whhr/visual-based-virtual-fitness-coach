@@ -152,30 +152,31 @@ python main.py [-v VIDEO] [-m MODEL]
 
 ### 帧选择与评分策略
 
-为避免将高度相似的连续帧作为模型输入并产生过高置信度，系统实现了智能的选帧策略：
+为了让预测输入与训练集中的标准四帧（`QS1.jpg` ~ `QS4.jpg`）保持阶段匹配，系统采用**阶段划分式选帧**：
 
-#### 候选帧评分 (`candidate_score`)
+#### 阶段划分式选帧 (`select_frames_by_phase`)
 
-将离散评分替换为连续的加权评分（约 0-10 分），评分项包括：
+1. **起始帧**：选取第一帧可用的 metrics 作为起势开始 (`QS1`)
+2. **腿部峰值**：在起始之后、结束之前，查找脚距/臀宽比最大的帧，代表双腿展开到位 (`QS2`)
+3. **手臂峰值**：自腿部峰值往后，选取手臂高度比达到峰值的帧，代表双臂抬起到位 (`QS3`)
+4. **收势帧**：保留最后一帧可用的 metrics 作为动作结束 (`QS4`)
+
+如果某阶段检测不到有效帧，会自动回退到邻近的高质量帧或使用末帧补齐，保证始终输出 4 帧供模型预测。
+
+#### 帧质量评分 (`candidate_score`)
+
+`candidate_score` 仍然用于辅助回退逻辑与调试，采用 0 ~ 10 的连续评分衡量单帧质量，评分项包括：
 
 | 评估项 | 目标值 | 权重 | 说明 |
 |--------|--------|------|------|
 | 可见度 (avg_visibility) | 越高越好 | 2.0 | 保证关键点检测的可靠性 |
-| 手臂高度比 (arm_height_ratio) | ~0.6 | 3.0 | 评估手臂位置的合理性 |
-| 躯干角度 (torso_angle) | 越小越好 | 2.0 | 评估身体姿态的端正程度 |
-| 手间距/肩宽比 | ~0.75 | 1.5 | 评估手部位置的协调性 |
-| 脚距/臀宽比 | ~1.0 | 1.0 | 评估站位的稳定性 |
+| 手臂高度比 (arm_height_ratio) | ~0.6 | 3.0 | 评估手臂抬升高度 |
+| 躯干角度 (torso_angle) | 越小越好 | 2.0 | 评估身体是否保持中正 |
+| 手间距/肩宽比 | ~0.75 | 1.5 | 评估双臂展开幅度 |
+| 脚距/臀宽比 | ~1.0 | 1.0 | 评估双脚站位稳定性 |
 | 肘部角度 | ~160° | 0.5 | 评估手臂伸展程度 |
 
-#### 帧选择算法 (`select_frames_for_prediction`)
-
-1. **识别高质量段**：找出所有得分 >= `seg_thresh` 的连续帧段
-2. **段质量排序**：按段长度和平均分计算质量，选择最多 4 段
-3. **代表帧选择**：从每个段中选择得分最高的帧作为代表
-4. **分散补全**：若段数不足 4，从剩余高分帧中按时间分散策略补齐
-5. **均匀采样回退**：若仍不足，使用均匀采样确保获得 4 帧
-
-该策略更贴合训练时"从若干高质量且分散的动作段中各取一帧"的做法。
+选帧过程会优先满足阶段要求，若某阶段没有可靠帧，`candidate_score` 会帮助挑选最佳备选帧。
 
 ### 模型预测
 
@@ -189,44 +190,45 @@ python main.py [-v VIDEO] [-m MODEL]
 
 ### 调参建议
 
-如果模型预测结果偏向过高置信度，可以尝试以下调整：
+如果阶段判定与实际动作轨迹存在偏差，可以尝试以下调优：
 
-1. **增大段阈值** (`seg_thresh`)
-   - 默认值：2
-   - 建议范围：2-6
-   - 效果：仅非常"好"的帧被视为段的一部分
+1. **调整腿部峰值判定**  
+   - 修改 `main.py` 中 `leg_open_score` 的计算方式，例如叠加膝盖角度或采用移动平均  
+   - 调整判定时的“峰值平台”阈值（当前为 `max_leg * 0.97`）
 
-2. **调整段选择优先级**
-   - 更偏重长度或更高的平均分
-   - 修改 `select_frames_for_prediction` 中的 `quality` 计算
+2. **调整手臂峰值判定**  
+   - 修改 `arm_raise_score`，例如同时考虑 `hand_distance` 或肩角度  
+   - 调整峰值搜索区间，限制最小/最大间隔
 
-3. **调整候选评分权重**
-   - 降低 `arm_height_ratio` 的权重
-   - 提高 `torso_angle` 的惩罚力度
-   - 在 `main.py` 的 `candidate_score` 函数中修改
+3. **微调候选评分**  
+   - 在 `candidate_score` 中改变各项权重或阈值，用于控制回退时的优先级  
+   - 可结合调试输出观察得分变化
 
 ### 参数位置
 
 当前所有参数都在 `main.py` 文件中：
-- `candidate_score`：评分函数中的各项权重
-- `select_frames_for_prediction`：`seg_thresh`、`min_seg_len`、`max_segments` 等
+- `leg_open_score` / `arm_raise_score`：控制腿部/手臂峰值判定
+- `candidate_score`：帧质量评分及权重
+- `select_frames_by_phase`：阶段匹配及回退逻辑
 
-如需将这些参数暴露为命令行参数（如 `--seg-thresh`），可以扩展 `argparse` 配置。
+如需将这些参数暴露为命令行参数，可以在 `main.py` 中扩展 `argparse` 配置。
 
 ### 调试模式
 
 在 `main.py` 视频处理结束处添加调试输出：
 
 ```python
-# 打印候选段信息
-print(f"候选段数量: {len(seg_info)}")
-for info in seg_info:
-    print(f"段: {info[1]}-{info[2]}, 质量: {info[0]:.2f}, 平均分: {info[4]:.2f}")
-
-# 打印最终选帧
-print(f"选定的帧索引: {indices}")
-for i, idx in enumerate(indices):
-    print(f"帧 {i+1}: 索引 {idx}, 得分 {scores[idx]:.2f}")
+print("阶段性选帧结果：")
+for phase_name, idx in phases.items():
+    if idx is None:
+        continue
+    print(
+        f"{phase_name:>7} -> idx={idx}, "
+        f"腿部开度={leg_open_score(metrics_list[idx]):.3f}, "
+        f"手臂高度={arm_raise_score(metrics_list[idx]):.3f}, "
+        f"质量={candidate_score(metrics_list[idx]):.3f}"
+    )
+print(f"最终帧索引: {indices}")
 ```
 
 ### 可视化选定的帧
