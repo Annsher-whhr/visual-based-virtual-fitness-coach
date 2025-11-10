@@ -104,6 +104,7 @@ def main():
     if args.video:
         try:
             from taichi_ai.predict import predict_quality
+            from frame_selector import select_frames_by_similarity
 
             def candidate_score(m):
                 """整体质量评分。用于回退和调试，不再直接驱动选帧。"""
@@ -155,16 +156,43 @@ def main():
                 return round(float(score), 3)
 
             def leg_open_score(m):
+                """腿部打开阶段评分：脚距越大越好，同时要求身体保持正中。"""
                 if not isinstance(m, dict) or not m:
                     return float('-inf')
+
                 foot = m.get('foot_distance')
                 hip = m.get('hip_width')
+                shoulder = m.get('shoulder_width')
+                torso_angle = m.get('torso_angle')
+                nose_offset = m.get('nose_center_offset')
+                arm_height = m.get('arm_height_ratio')
+
                 if foot is None or hip is None:
                     return float('-inf')
                 hip = float(hip)
                 if hip <= 1e-6:
                     return float('-inf')
-                return float(foot) / (hip + 1e-6)
+
+                ratio = float(foot) / (hip + 1e-6)
+
+                # 头部居中 + 躯干直立约束
+                span = shoulder if shoulder is not None else hip
+                span = float(span) if span not in (None, 0.0) else 1.0
+                nose_norm = abs(float(nose_offset or 0.0)) / (span + 1e-6)
+                torso_norm = abs(float(torso_angle or 0.0)) / 35.0  # 约束 35° 以上视为偏离较大
+                arm_norm = 0.0
+                if arm_height is not None:
+                    # 手尚未抬起：arm_height_ratio 越接近 0.2 越好，超过 0.4 逐渐扣分
+                    arm_val = max(0.0, float(arm_height) - 0.2)
+                    arm_norm = arm_val / 0.8  # normalize to 0..1, 强调过早抬臂的惩罚
+
+                penalty = (
+                    0.5 * min(1.0, nose_norm) +
+                    0.3 * min(1.0, torso_norm) +
+                    0.2 * min(1.0, arm_norm)
+                )
+
+                return ratio - penalty
 
             def arm_raise_score(m):
                 if not isinstance(m, dict) or not m:
@@ -173,6 +201,15 @@ def main():
                 if arm is None:
                     return float('-inf')
                 return float(arm)
+
+            def foot_hip_ratio(m):
+                if not isinstance(m, dict) or not m:
+                    return float('nan')
+                foot = m.get('foot_distance')
+                hip = m.get('hip_width')
+                if foot is None or hip is None or hip == 0:
+                    return float('nan')
+                return float(foot) / (float(hip) + 1e-6)
 
             # 如果总帧数少于4，则无法预测
             if len(metrics_list) < 4:
@@ -317,26 +354,37 @@ def main():
             if _predicted_once:
                 print('预测已执行过一次，跳过重复预测。')
             else:
-                indices, phases = select_frames_by_phase(metrics_list)
-                selected_frames = [metrics_list[i] for i in indices]
-
-                print("阶段性选帧结果：")
-                for phase_name, idx in phases.items():
-                    if idx is None:
-                        continue
-                    leg_val = leg_open_score(metrics_list[idx])
-                    arm_val = arm_raise_score(metrics_list[idx])
-                    leg_str = f"{leg_val:.3f}" if math.isfinite(leg_val) else "N/A"
-                    arm_str = f"{arm_val:.3f}" if math.isfinite(arm_val) else "N/A"
-                    print(
-                        f"  {phase_name:>7}: 索引 {idx:>4} | 腿部开度 {leg_str:>6} | "
-                        f"手臂高度 {arm_str:>6} | 综合得分 {candidate_score(metrics_list[idx]):.3f}"
+                # 使用基于特征相似度的智能选帧算法
+                try:
+                    indices, info = select_frames_by_similarity(
+                        metrics_list, 
+                        min_frame_gap=3,  # 相邻帧最小间隔
+                        verbose=True
                     )
+                    selected_frames = [metrics_list[i] for i in indices]
+                    
+                    # 可选：生成相似度热力图
+                    try:
+                        from frame_selector import visualize_similarity_heatmap
+                        visualize_similarity_heatmap(info['similarity_matrix'], indices)
+                    except:
+                        pass
+                    
+                except Exception as e:
+                    print(f"⚠️  智能选帧失败: {e}")
+                    print("使用原有的阶段性选帧作为后备...")
+                    indices, phases = select_frames_by_phase(metrics_list)
+                    selected_frames = [metrics_list[i] for i in indices]
 
-                print(f"最终用于预测的帧索引（按时间顺序）：{indices}")
+                print(f"\n最终用于预测的帧索引（按时间顺序）：{indices}")
                 print('即将调用模型预测...')
                 pred = predict_quality(selected_frames)
-                print('模型预测结果：', pred)
+                print('\n' + '='*60)
+                print('🎯 模型预测结果')
+                print('='*60)
+                print(f"动作质量分数: {pred.get('score', 0):.2%}")
+                print(f"反馈建议: {pred.get('advice', '无')}")
+                print('='*60 + '\n')
                 _predicted_once = True
         except Exception as e:
             print('调用模型预测时出错：', e)
