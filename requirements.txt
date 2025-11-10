@@ -6,3 +6,4 @@ Pillow
 #pyopenpose
 mediapipe
 requests
+tensorflow
