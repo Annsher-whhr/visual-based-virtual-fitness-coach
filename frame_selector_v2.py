@@ -8,7 +8,7 @@ import numpy as np
 from typing import List, Dict, Tuple
 
 
-def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True) -> Tuple[int, int]:
+def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, force_start_from_beginning=True) -> Tuple[int, int]:
     """
     自动检测起势动作的开始和结束帧
     
@@ -57,47 +57,121 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True) -> T
     knee_bends = np.array(knee_bends)
     
     # === 检测开始帧 ===
-    # 策略1: 找到手臂高度从低到高开始上升的点
-    arm_diff = np.diff(arm_heights)
-    arm_diff_smooth = np.convolve(arm_diff, np.ones(5)/5, mode='same')
-    
-    start_candidates = []
-    for i in range(len(arm_diff_smooth) - 5):
-        # 手臂开始持续上升 且 当前手臂不是已经很高
-        if arm_diff_smooth[i:i+5].mean() > 0.01 and arm_heights[i] < 0.6:
-            start_candidates.append(i)
-    
-    if start_candidates:
-        start_idx_local = start_candidates[0]
+    if force_start_from_beginning:
+        # 强制从第一帧开始（用于训练数据提取）
+        start_idx = 0
+        if verbose:
+            print("[INFO] 使用完整动作：从第一帧开始")
     else:
-        # 回退：找到手臂高度最低的点（在前半段）
-        start_idx_local = np.argmin(arm_heights[:len(arm_heights)//2])
-    
-    start_idx = valid_indices[start_idx_local]
+        # 智能检测：寻找起势动作的起始点
+        # 起势动作的特征：手臂从较低位置开始上升，脚距较小
+        
+        # 策略1: 寻找手臂高度从低到高开始持续上升的点
+        arm_diff = np.diff(arm_heights)
+        arm_diff_smooth = np.convolve(arm_diff, np.ones(7)/7, mode='same')  # 使用更大的窗口平滑
+        
+        # 策略2: 结合脚距特征（起势开始时脚距应该较小）
+        start_candidates = []
+        for i in range(len(arm_diff_smooth) - 10):
+            # 条件1: 手臂开始持续上升（接下来10帧的平均变化率为正）
+            arm_rising = arm_diff_smooth[i:i+10].mean() > 0.008
+            
+            # 条件2: 当前手臂高度较低（< 0.7），说明还没开始或刚开始
+            arm_low = arm_heights[i] < 0.7
+            
+            # 条件3: 脚距较小（< 0.15），说明还没迈步或刚开始
+            foot_small = foot_distances[i] < 0.15
+            
+            # 条件4: 膝盖弯曲度较小（< 10度），说明还是起始姿态
+            knee_straight = knee_bends[i] < 10
+            
+            if arm_rising and arm_low and foot_small and knee_straight:
+                start_candidates.append(i)
+        
+        if start_candidates:
+            # 取第一个符合条件的点
+            start_idx_local = start_candidates[0]
+            if verbose:
+                print(f"[INFO] 智能检测到起势动作开始：第 {valid_indices[start_idx_local]} 帧")
+        else:
+            # 回退策略：在前半段找到手臂高度最低的点
+            search_range = len(arm_heights) // 2
+            min_arm_idx = np.argmin(arm_heights[:search_range])
+            
+            # 进一步验证：该点附近脚距是否较小
+            if foot_distances[min_arm_idx] < 0.2:
+                start_idx_local = min_arm_idx
+            else:
+                # 如果脚距已经较大，往前找脚距较小的点
+                for i in range(min_arm_idx, -1, -1):
+                    if foot_distances[i] < 0.15:
+                        start_idx_local = i
+                        break
+                else:
+                    start_idx_local = min_arm_idx
+            
+            if verbose:
+                print(f"[INFO] 使用回退策略：从第 {valid_indices[start_idx_local]} 帧开始")
+        
+        start_idx = valid_indices[start_idx_local]
     
     # === 检测结束帧 ===
-    # 策略：找到膝盖弯曲达到峰值后脚距稳定的点
+    # 策略：找到起势动作完成的标志
+    # 完成标志：膝盖弯曲达到峰值 + 脚距稳定 + 手臂高度在中等位置
+    
+    # 1. 找到膝盖弯曲的峰值区域
     knee_max_idx_local = np.argmax(knee_bends)
+    knee_max_value = knee_bends[knee_max_idx_local]
     
-    # 从膝盖弯曲最大处往后找
-    end_search_start = max(knee_max_idx_local, len(knee_bends) // 2)
+    # 2. 从开始帧之后寻找结束帧（确保在动作区间内）
+    # 注意：valid_indices 是原始帧索引，需要找到对应的 local 索引
+    if not force_start_from_beginning:
+        # 找到 start_idx 在 valid_indices 中的位置
+        try:
+            search_start_local = valid_indices.index(start_idx)
+        except ValueError:
+            search_start_local = 0
+    else:
+        search_start_local = 0
     
-    # 计算脚距变化率
+    # 3. 计算脚距变化率
     foot_diff = np.diff(foot_distances)
     
-    # 找到脚距变化很小的点（动作稳定）
+    # 4. 寻找结束帧候选点（从膝盖峰值往后）
+    end_search_start = max(knee_max_idx_local, search_start_local + len(knee_bends) // 3)
+    
     end_candidates = []
-    for i in range(end_search_start, len(foot_diff) - 3):
-        if np.abs(foot_diff[i:i+3]).max() < 0.015:
+    for i in range(end_search_start, len(foot_diff) - 5):
+        # 条件1: 脚距变化很小（稳定）
+        foot_stable = np.abs(foot_diff[i:i+5]).max() < 0.02
+        
+        # 条件2: 膝盖弯曲度较高（> 15度，说明已经完成下蹲）
+        knee_bent = knee_bends[i] > 15
+        
+        # 条件3: 手臂高度在中等位置（0.3-0.9之间，完成姿态）
+        arm_medium = 0.3 < arm_heights[i] < 0.9
+        
+        if foot_stable and knee_bent and arm_medium:
             end_candidates.append(i)
     
     if end_candidates:
+        # 取第一个符合条件的点
         end_idx_local = end_candidates[0]
+        if verbose:
+            print(f"[INFO] 智能检测到起势动作结束：第 {valid_indices[end_idx_local]} 帧")
     else:
-        # 回退：膝盖弯曲最大点后几帧
-        end_idx_local = min(knee_max_idx_local + 5, len(valid_indices) - 1)
+        # 回退策略：使用膝盖弯曲峰值后几帧
+        end_idx_local = min(knee_max_idx_local + 10, len(valid_indices) - 1)
+        if verbose:
+            print(f"[INFO] 使用回退策略：从膝盖峰值后确定结束帧")
     
     end_idx = valid_indices[end_idx_local]
+    
+    # 如果强制从开始（训练数据提取），确保结束帧不超过465
+    if force_start_from_beginning and end_idx > 465:
+        end_idx = min(465, len(metrics_list) - 1)
+        if verbose:
+            print(f"[INFO] 限制结束帧为465（完整动作结束）")
     
     # 确保动作区间足够长
     if end_idx - start_idx < 20:
@@ -133,8 +207,8 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True) -> T
     return start_idx, end_idx
 
 
-def select_frames_evenly(metrics_list: List[Dict], n_frames=12, 
-                         auto_detect_boundaries=True, fps=30, verbose=True) -> Tuple[List[int], List[Dict]]:
+def select_frames_evenly(metrics_list: List[Dict], n_frames=20, 
+                         auto_detect_boundaries=True, fps=30, verbose=True, force_start_from_beginning=False) -> Tuple[List[int], List[Dict]]:
     """
     从视频中选择N帧关键帧
     
@@ -153,7 +227,7 @@ def select_frames_evenly(metrics_list: List[Dict], n_frames=12,
     
     # 自动检测起势动作边界
     if auto_detect_boundaries:
-        start_idx, end_idx = detect_action_start_end(metrics_list, fps, verbose)
+        start_idx, end_idx = detect_action_start_end(metrics_list, fps, verbose, force_start_from_beginning)
     else:
         start_idx = 0
         end_idx = len(metrics_list) - 1

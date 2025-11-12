@@ -56,13 +56,13 @@ def extract_video_features(video_path, verbose=True):
     return metrics_list, fps
 
 
-def evaluate_taichi_video(video_path, n_frames=12, verbose=True):
+def evaluate_taichi_video(video_path, n_frames=20, verbose=True):
     """
     评估太极拳起势动作
     
     Args:
         video_path: 视频文件路径
-        n_frames: 抽取帧数（默认12，应与训练时一致）
+        n_frames: 抽取帧数（默认20，应与训练时一致）
         verbose: 是否显示详细信息
     
     Returns:
@@ -89,7 +89,8 @@ def evaluate_taichi_video(video_path, n_frames=12, verbose=True):
         n_frames=n_frames,
         auto_detect_boundaries=True,
         fps=fps,
-        verbose=verbose
+        verbose=verbose,
+        force_start_from_beginning=False  # 评估时智能识别，不强制从开始
     )
     
     # 步骤3: 模型评估
@@ -130,8 +131,8 @@ def main():
     
     parser.add_argument('-v', '--video', type=str, required=True,
                        help='输入视频路径')
-    parser.add_argument('-n', '--n-frames', type=int, default=12,
-                       help='抽取的关键帧数量（默认12）')
+    parser.add_argument('-n', '--n-frames', type=int, default=20,
+                       help='抽取的关键帧数量（默认20）')
     parser.add_argument('-q', '--quiet', action='store_true',
                        help='静默模式（只输出最终结果）')
     

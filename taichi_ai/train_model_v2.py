@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 改进版模型训练 - 支持多帧输入
-基于12帧标准数据训练深度神经网络
+基于20帧标准数据训练深度神经网络（440维特征 = 20帧 × 22特征/帧）
 """
 
 import os
@@ -213,7 +213,7 @@ for bar, value in zip(bars, metrics_values):
                    f'{value:.1f}%',
                    ha='center', va='bottom', fontsize=11, fontweight='bold')
 
-plt.suptitle(f'太极拳起势动作评估模型训练报告 (12帧输入)', fontsize=16, y=0.995)
+plt.suptitle(f'太极拳起势动作评估模型训练报告 (20帧输入)', fontsize=16, y=0.995)
 plt.tight_layout()
 
 report_path = os.path.join(os.path.dirname(BASE_DIR), "model_evaluation_report_v2.png")

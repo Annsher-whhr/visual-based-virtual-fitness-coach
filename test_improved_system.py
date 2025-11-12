@@ -16,7 +16,7 @@ from src.detection import detect_human
 from taichi_ai.predict_v2 import predict_quality
 
 
-def evaluate_video(video_path, n_frames=12, visualize=False):
+def evaluate_video(video_path, n_frames=20, visualize=False):
     """
     评估视频中的起势动作
     
@@ -79,7 +79,8 @@ def evaluate_video(video_path, n_frames=12, visualize=False):
             n_frames=n_frames,
             auto_detect_boundaries=True,
             fps=fps,
-            verbose=True
+            verbose=True,
+            force_start_from_beginning=False  # 评估时智能识别，不强制从开始
         )
     except Exception as e:
         print(f"[ERROR] 抽帧失败: {e}")
@@ -110,8 +111,8 @@ def main():
     parser = argparse.ArgumentParser(description='测试改进后的太极拳起势动作评估系统')
     parser.add_argument('-v', '--video', type=str, required=True,
                        help='输入视频路径')
-    parser.add_argument('-n', '--n-frames', type=int, default=12,
-                       help='抽取的关键帧数量（默认12）')
+    parser.add_argument('-n', '--n-frames', type=int, default=20,
+                       help='抽取的关键帧数量（默认20）')
     parser.add_argument('--visualize', action='store_true',
                        help='是否生成可视化图表')
     
@@ -145,7 +146,7 @@ if __name__ == "__main__":
             print(f"测试视频: {video}")
             print(f"{'#'*60}")
             
-            result = evaluate_video(video, n_frames=12)
+            result = evaluate_video(video, n_frames=20)
             
             if result:
                 print(f"[OK] {video} 评估完成\n")

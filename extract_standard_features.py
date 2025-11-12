@@ -92,18 +92,19 @@ def extract_all_features_from_video(video_path, output_json=None, verbose=True):
     return features_list
 
 
-def detect_action_boundaries(features_list, fps=30, verbose=True):
+def detect_action_boundaries(features_list, fps=30, verbose=True, force_start_from_beginning=True):
     """
-    自动检测起势动作的开始和结束帧
+    检测起势动作的开始和结束帧
     
     基于以下特征变化来检测：
-    1. 开始: arm_height_ratio 从低到高 + foot_distance 较小
+    1. 开始: 从第一帧开始（完整动作）或自动检测
     2. 结束: knee_bend_average 达到峰值 + foot_distance 达到最大值并稳定
     
     Args:
         features_list: 所有帧的特征列表
         fps: 视频帧率（用于时间计算）
         verbose: 是否打印详细信息
+        force_start_from_beginning: 是否强制从第一帧开始（默认True）
     
     Returns:
         (start_idx, end_idx): 起势动作的开始和结束帧索引
@@ -137,33 +138,33 @@ def detect_action_boundaries(features_list, fps=30, verbose=True):
             print("[WARNING] 有效帧数不足，使用全部帧")
         return 0, len(features_list) - 1
     
-    # 转换为numpy数组便于分析
+    # 转换为numpy数组便于分析（无论是否强制从开始，都需要这些数组来检测结束帧）
     arm_heights = np.array(arm_heights)
     foot_distances = np.array(foot_distances)
     knee_bends = np.array(knee_bends)
     
     # === 检测开始帧 ===
-    # 标准：arm_height_ratio 开始上升 + foot_distance 较小
-    # 策略：找到手臂高度从低到高变化的起点
-    
-    # 计算手臂高度的变化率（平滑）
-    arm_diff = np.diff(arm_heights)
-    arm_diff_smooth = np.convolve(arm_diff, np.ones(5)/5, mode='same')
-    
-    # 找到手臂高度开始持续上升的点
-    start_candidates = []
-    for i in range(len(arm_diff_smooth) - 5):
-        # 如果接下来5帧的平均变化率为正，且手臂不是已经很高
-        if arm_diff_smooth[i:i+5].mean() > 0.01 and arm_heights[i] < 0.7:
-            start_candidates.append(i)
-    
-    if start_candidates:
-        start_idx_local = start_candidates[0]  # 取第一个符合条件的点
+    if force_start_from_beginning:
+        # 强制从第一帧开始（完整起势动作）
+        start_idx = 0
+        if verbose:
+            print("[INFO] 使用完整动作：从第一帧开始")
     else:
-        # 回退：找到手臂高度最低的点
-        start_idx_local = np.argmin(arm_heights[:len(arm_heights)//2])  # 在前半段找
-    
-    start_idx = valid_indices[start_idx_local]
+        # 自动检测开始帧（原有逻辑）
+        arm_diff = np.diff(arm_heights)
+        arm_diff_smooth = np.convolve(arm_diff, np.ones(5)/5, mode='same')
+        
+        start_candidates = []
+        for i in range(len(arm_diff_smooth) - 5):
+            if arm_diff_smooth[i:i+5].mean() > 0.01 and arm_heights[i] < 0.7:
+                start_candidates.append(i)
+        
+        if start_candidates:
+            start_idx_local = start_candidates[0]
+        else:
+            start_idx_local = np.argmin(arm_heights[:len(arm_heights)//2])
+        
+        start_idx = valid_indices[start_idx_local]
     
     # === 检测结束帧 ===
     # 标准：knee_bend_average 达到峰值 + foot_distance 达到最大并稳定
@@ -181,7 +182,7 @@ def detect_action_boundaries(features_list, fps=30, verbose=True):
     end_candidates = []
     for i in range(end_search_start, len(foot_diff) - 3):
         # 如果接下来3帧的脚距变化都很小
-        if np.abs(foot_diff[i:i+3]).max() < 0.01:
+        if np.abs(foot_diff[i:i+3]).max() < 0.015:
             end_candidates.append(i)
     
     if end_candidates:
@@ -191,6 +192,12 @@ def detect_action_boundaries(features_list, fps=30, verbose=True):
         end_idx_local = min(knee_max_idx_local + 5, len(valid_indices) - 1)
     
     end_idx = valid_indices[end_idx_local]
+    
+    # 确保结束帧不超过465（根据用户要求）
+    if end_idx > 465:
+        end_idx = 465
+        if verbose:
+            print(f"[INFO] 限制结束帧为465（完整动作结束）")
     
     # 确保有足够的帧数
     if end_idx - start_idx < 10:
@@ -279,11 +286,25 @@ if __name__ == "__main__":
     cap.release()
     
     print("\n步骤2: 检测起势动作的开始和结束...")
-    start_idx, end_idx = detect_action_boundaries(features_list, fps=fps, verbose=True)
+    # 强制从第一帧开始，到第465帧结束（完整起势动作）
+    start_idx, end_idx = detect_action_boundaries(
+        features_list, 
+        fps=fps, 
+        verbose=True,
+        force_start_from_beginning=True
+    )
     
-    print("\n步骤3: 从动作区间均匀抽取12帧作为标准数据...")
+    # 确保结束帧为465（完整动作）
+    if end_idx > 465:
+        end_idx = 465
+    elif end_idx < 465:
+        # 如果检测到的结束帧小于465，使用465
+        end_idx = min(465, len(features_list) - 1)
+        print(f"[INFO] 调整结束帧为465（完整动作）")
+    
+    print("\n步骤3: 从动作区间均匀抽取20帧作为标准数据...")
     standard_features, standard_indices = extract_evenly_spaced_frames(
-        features_list, start_idx, end_idx, n_frames=12
+        features_list, start_idx, end_idx, n_frames=20
     )
     
     print(f"选中的帧索引: {standard_indices}")

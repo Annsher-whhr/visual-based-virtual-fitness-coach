@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 改进版数据生成器 - 支持多帧训练数据
-基于从qishi3.mp4提取的12帧标准数据
+基于从qishi3.mp4提取的20帧标准数据（从0-465帧均匀采样）
 """
 
 import os
@@ -21,7 +21,7 @@ FEATURE_ORDER = [
     'nose_center_offset', 'avg_visibility'
 ]
 
-# === 从标准视频提取的12帧特征 ===
+# === 从标准视频提取的标准帧特征（动态帧数，当前为20帧）===
 def load_standard_frames():
     """从qishi3_standard_frames.json加载标准帧数据"""
     # 尝试从多个位置加载
@@ -55,9 +55,9 @@ try:
     print(f"     动作包含 {N_FRAMES} 个关键帧\n")
 except FileNotFoundError as e:
     print(f"[ERROR] {e}")
-    # 使用默认的12帧空数据作为占位
-    standard_frames = [{} for _ in range(12)]
-    N_FRAMES = 12
+    # 使用默认的20帧空数据作为占位（实际应从JSON加载）
+    standard_frames = [{} for _ in range(20)]
+    N_FRAMES = 20
     print(f"[WARNING] 使用空数据占位，请先生成标准数据！\n")
 
 

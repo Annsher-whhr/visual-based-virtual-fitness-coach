@@ -13,7 +13,7 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 # 数据
 metrics = ['准确率', '精确率', '召回率', 'F1分数']
 v1_scores = [60, 50, 70, 58]  # 估计值（基于用户描述）
-v2_scores = [98.75, 97.56, 100, 98.77]  # 实际测试值
+v2_scores = [99.38, 98.77, 100.00, 99.38]  # 实际测试值（从test_model_v2.py获取）
 
 x = np.arange(len(metrics))
 width = 0.35
@@ -23,7 +23,7 @@ fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 # === 子图1: 柱状对比图 ===
 bars1 = ax1.bar(x - width/2, v1_scores, width, label='v1系统（4帧）', 
                 color='#FF6B6B', alpha=0.8)
-bars2 = ax1.bar(x + width/2, v2_scores, width, label='v2系统（12帧）',
+bars2 = ax1.bar(x + width/2, v2_scores, width, label='v2系统（20帧）',
                 color='#4ECDC4', alpha=0.8)
 
 ax1.set_ylabel('性能指标 (%)', fontsize=12)
@@ -52,8 +52,8 @@ for i, (bar1, bar2, v1, v2) in enumerate(zip(bars1, bars2, v1_scores, v2_scores)
 
 # === 子图2: 关键改进点 ===
 improvements = [
-    ('训练帧数', 4, 12),
-    ('特征维度', 88, 264),
+    ('训练帧数', 4, 20),
+    ('特征维度', 88, 440),
     ('训练样本', 1000, 1600),
     ('网络层数', 3, 4),
     ('错误类型', 6, 8),
