@@ -13,13 +13,14 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, forc
     自动检测起势动作的开始和结束帧
     
     检测逻辑：
-    1. 开始: arm_height_ratio 从低位开始上升 + foot_distance 较小
-    2. 结束: knee_bend_average 达到峰值 + foot_distance 稳定
+    1. 开始: 身体直立（膝盖较直 < 10°, 躯干角度小 < 5°） + 左腿开始往左张开（脚距较小但开始增大） + 手臂保持不动（较低且稳定）
+    2. 结束: knee_bend_average 达到峰值 + foot_distance 稳定 + 手臂高度在中等位置
     
     Args:
         metrics_list: 所有帧的特征列表
         fps: 视频帧率
         verbose: 是否打印详细信息
+        force_start_from_beginning: 是否强制从第一帧开始（用于训练数据提取）
     
     Returns:
         (start_idx, end_idx): 动作的开始和结束帧索引
@@ -28,6 +29,7 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, forc
     arm_heights = []
     foot_distances = []
     knee_bends = []
+    torso_angles = []
     valid_indices = []
     
     for i, metrics in enumerate(metrics_list):
@@ -37,6 +39,7 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, forc
         arm_h = metrics.get('arm_height_ratio')
         foot_d = metrics.get('foot_distance')
         knee_b = metrics.get('knee_bend_average')
+        torso_a = metrics.get('torso_angle')
         vis = metrics.get('avg_visibility', 0)
         
         # 只考虑可见性较高的帧
@@ -44,6 +47,7 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, forc
             arm_heights.append(arm_h)
             foot_distances.append(foot_d)
             knee_bends.append(knee_b)
+            torso_angles.append(torso_a if torso_a is not None else 0)
             valid_indices.append(i)
     
     if len(valid_indices) < 10:
@@ -55,6 +59,7 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, forc
     arm_heights = np.array(arm_heights)
     foot_distances = np.array(foot_distances)
     knee_bends = np.array(knee_bends)
+    torso_angles = np.array(torso_angles)
     
     # === 检测开始帧 ===
     if force_start_from_beginning:
@@ -64,28 +69,34 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, forc
             print("[INFO] 使用完整动作：从第一帧开始")
     else:
         # 智能检测：寻找起势动作的起始点
-        # 起势动作的特征：手臂从较低位置开始上升，脚距较小
+        # 起势动作开始的特征：
+        # 1. 身体直立：膝盖较直（< 10°），躯干角度小（< 5°）
+        # 2. 左腿开始往左张开：脚距较小（< 0.15）但即将开始增大（脚距变化率开始为正）
+        # 3. 手臂保持不动：手臂高度较低（< 0.3）且稳定（变化不大）
         
-        # 策略1: 寻找手臂高度从低到高开始持续上升的点
+        # 计算脚距变化率（检测左腿开始张开）
+        foot_diff = np.diff(foot_distances)
+        foot_diff_smooth = np.convolve(foot_diff, np.ones(5)/5, mode='same')  # 平滑处理
+        
+        # 计算手臂高度变化率（检测手臂是否稳定）
         arm_diff = np.diff(arm_heights)
-        arm_diff_smooth = np.convolve(arm_diff, np.ones(7)/7, mode='same')  # 使用更大的窗口平滑
+        arm_diff_abs = np.abs(arm_diff)  # 手臂变化幅度
         
-        # 策略2: 结合脚距特征（起势开始时脚距应该较小）
         start_candidates = []
-        for i in range(len(arm_diff_smooth) - 10):
-            # 条件1: 手臂开始持续上升（接下来10帧的平均变化率为正）
-            arm_rising = arm_diff_smooth[i:i+10].mean() > 0.008
+        for i in range(len(foot_diff_smooth) - 8):
+            # 条件1: 身体直立
+            knee_straight = knee_bends[i] < 10  # 膝盖较直
+            torso_upright = abs(torso_angles[i]) < 5  # 躯干角度小
             
-            # 条件2: 当前手臂高度较低（< 0.7），说明还没开始或刚开始
-            arm_low = arm_heights[i] < 0.7
+            # 条件2: 脚距较小，但即将开始增大（左腿开始张开）
+            foot_small = foot_distances[i] < 0.15  # 当前脚距较小
+            foot_starting_to_open = foot_diff_smooth[i:i+8].mean() > 0.003  # 接下来脚距开始增大
             
-            # 条件3: 脚距较小（< 0.15），说明还没迈步或刚开始
-            foot_small = foot_distances[i] < 0.15
+            # 条件3: 手臂保持不动（较低且稳定）
+            arm_low = arm_heights[i] < 0.3  # 手臂高度较低
+            arm_stable = arm_diff_abs[max(0, i-3):i+1].mean() < 0.02 if i >= 3 else True  # 手臂变化很小
             
-            # 条件4: 膝盖弯曲度较小（< 10度），说明还是起始姿态
-            knee_straight = knee_bends[i] < 10
-            
-            if arm_rising and arm_low and foot_small and knee_straight:
+            if knee_straight and torso_upright and foot_small and foot_starting_to_open and arm_low and arm_stable:
                 start_candidates.append(i)
         
         if start_candidates:
@@ -93,25 +104,26 @@ def detect_action_start_end(metrics_list: List[Dict], fps=30, verbose=True, forc
             start_idx_local = start_candidates[0]
             if verbose:
                 print(f"[INFO] 智能检测到起势动作开始：第 {valid_indices[start_idx_local]} 帧")
+                print(f"      特征：身体直立(膝盖{knee_bends[start_idx_local]:.1f}°, 躯干{abs(torso_angles[start_idx_local]):.1f}°), "
+                      f"脚距{foot_distances[start_idx_local]:.3f}开始增大, 手臂稳定({arm_heights[start_idx_local]:.3f})")
         else:
-            # 回退策略：在前半段找到手臂高度最低的点
-            search_range = len(arm_heights) // 2
-            min_arm_idx = np.argmin(arm_heights[:search_range])
+            # 回退策略：在前半段找到脚距最小且身体直立的点
+            search_range = len(foot_distances) // 2
+            candidates = []
+            for i in range(search_range):
+                if knee_bends[i] < 10 and abs(torso_angles[i]) < 5 and foot_distances[i] < 0.15:
+                    candidates.append((i, foot_distances[i]))
             
-            # 进一步验证：该点附近脚距是否较小
-            if foot_distances[min_arm_idx] < 0.2:
-                start_idx_local = min_arm_idx
+            if candidates:
+                # 选择脚距最小的点
+                start_idx_local = min(candidates, key=lambda x: x[1])[0]
             else:
-                # 如果脚距已经较大，往前找脚距较小的点
-                for i in range(min_arm_idx, -1, -1):
-                    if foot_distances[i] < 0.15:
-                        start_idx_local = i
-                        break
-                else:
-                    start_idx_local = min_arm_idx
+                # 如果找不到，使用脚距最小的点
+                start_idx_local = np.argmin(foot_distances[:search_range])
             
             if verbose:
                 print(f"[INFO] 使用回退策略：从第 {valid_indices[start_idx_local]} 帧开始")
+                print(f"      特征：膝盖{knee_bends[start_idx_local]:.1f}°, 脚距{foot_distances[start_idx_local]:.3f}")
         
         start_idx = valid_indices[start_idx_local]
     

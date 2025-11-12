@@ -113,6 +113,7 @@ def detect_action_boundaries(features_list, fps=30, verbose=True, force_start_fr
     arm_heights = []
     foot_distances = []
     knee_bends = []
+    torso_angles = []
     valid_indices = []
     
     for i, item in enumerate(features_list):
@@ -123,6 +124,7 @@ def detect_action_boundaries(features_list, fps=30, verbose=True, force_start_fr
         arm_h = metrics.get('arm_height_ratio')
         foot_d = metrics.get('foot_distance')
         knee_b = metrics.get('knee_bend_average')
+        torso_a = metrics.get('torso_angle')
         vis = metrics.get('avg_visibility', 0)
         
         # 只考虑可见性较高的帧
@@ -130,6 +132,7 @@ def detect_action_boundaries(features_list, fps=30, verbose=True, force_start_fr
             arm_heights.append(arm_h)
             foot_distances.append(foot_d)
             knee_bends.append(knee_b)
+            torso_angles.append(torso_a if torso_a is not None else 0)
             valid_indices.append(i)
     
     if len(valid_indices) < 10:
@@ -142,6 +145,7 @@ def detect_action_boundaries(features_list, fps=30, verbose=True, force_start_fr
     arm_heights = np.array(arm_heights)
     foot_distances = np.array(foot_distances)
     knee_bends = np.array(knee_bends)
+    torso_angles = np.array(torso_angles)
     
     # === 检测开始帧 ===
     if force_start_from_beginning:
@@ -150,19 +154,56 @@ def detect_action_boundaries(features_list, fps=30, verbose=True, force_start_fr
         if verbose:
             print("[INFO] 使用完整动作：从第一帧开始")
     else:
-        # 自动检测开始帧（原有逻辑）
+        # 自动检测开始帧：基于身体直立和左腿开始张开
+        # 起势动作开始的特征：
+        # 1. 身体直立：膝盖较直（< 10°），躯干角度小（< 5°）
+        # 2. 左腿开始往左张开：脚距较小（< 0.15）但即将开始增大（脚距变化率开始为正）
+        # 3. 手臂保持不动：手臂高度较低（< 0.3）且稳定（变化不大）
+        
+        # 计算脚距变化率（检测左腿开始张开）
+        foot_diff = np.diff(foot_distances)
+        foot_diff_smooth = np.convolve(foot_diff, np.ones(5)/5, mode='same')
+        
+        # 计算手臂高度变化率（检测手臂是否稳定）
         arm_diff = np.diff(arm_heights)
-        arm_diff_smooth = np.convolve(arm_diff, np.ones(5)/5, mode='same')
+        arm_diff_abs = np.abs(arm_diff)
         
         start_candidates = []
-        for i in range(len(arm_diff_smooth) - 5):
-            if arm_diff_smooth[i:i+5].mean() > 0.01 and arm_heights[i] < 0.7:
+        for i in range(len(foot_diff_smooth) - 8):
+            # 条件1: 身体直立
+            knee_straight = knee_bends[i] < 10
+            torso_upright = abs(torso_angles[i]) < 5
+            
+            # 条件2: 脚距较小，但即将开始增大（左腿开始张开）
+            foot_small = foot_distances[i] < 0.15
+            foot_starting_to_open = foot_diff_smooth[i:i+8].mean() > 0.003
+            
+            # 条件3: 手臂保持不动（较低且稳定）
+            arm_low = arm_heights[i] < 0.3
+            arm_stable = arm_diff_abs[max(0, i-3):i+1].mean() < 0.02 if i >= 3 else True
+            
+            if knee_straight and torso_upright and foot_small and foot_starting_to_open and arm_low and arm_stable:
                 start_candidates.append(i)
         
         if start_candidates:
             start_idx_local = start_candidates[0]
+            if verbose:
+                print(f"[INFO] 智能检测到起势动作开始：第 {valid_indices[start_idx_local]} 帧")
         else:
-            start_idx_local = np.argmin(arm_heights[:len(arm_heights)//2])
+            # 回退策略：在前半段找到脚距最小且身体直立的点
+            search_range = len(foot_distances) // 2
+            candidates = []
+            for i in range(search_range):
+                if knee_bends[i] < 10 and abs(torso_angles[i]) < 5 and foot_distances[i] < 0.15:
+                    candidates.append((i, foot_distances[i]))
+            
+            if candidates:
+                start_idx_local = min(candidates, key=lambda x: x[1])[0]
+            else:
+                start_idx_local = np.argmin(foot_distances[:search_range])
+            
+            if verbose:
+                print(f"[INFO] 使用回退策略：从第 {valid_indices[start_idx_local]} 帧开始")
         
         start_idx = valid_indices[start_idx_local]
     
