@@ -29,9 +29,10 @@ def load_standard_frames():
     project_root = os.path.dirname(base_dir)
     
     candidates = [
-        os.path.join(project_root, "qishi3_standard_frames.json"),
-        "qishi3_standard_frames.json",
-        os.path.join(base_dir, "qishi3_standard_frames.json"),
+        os.path.join(project_root, "data", "standard", "qishi3_standard_frames.json"),
+        os.path.join(project_root, "qishi3_standard_frames.json"),  # 向后兼容
+        "qishi3_standard_frames.json",  # 向后兼容
+        os.path.join(base_dir, "qishi3_standard_frames.json"),  # 向后兼容
     ]
     
     for path in candidates:
@@ -229,9 +230,13 @@ def generate_dataset(n_correct=800, n_wrong=800):
     
     # === 保存数据 ===
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    X_path = os.path.join(base_dir, "X.npy")
-    y_path = os.path.join(base_dir, "y.npy")
-    errors_path = os.path.join(base_dir, "errors.json")
+    project_root = os.path.dirname(base_dir)
+    data_dir = os.path.join(project_root, "data", "training")
+    os.makedirs(data_dir, exist_ok=True)
+    
+    X_path = os.path.join(data_dir, "X.npy")
+    y_path = os.path.join(data_dir, "y.npy")
+    errors_path = os.path.join(data_dir, "errors.json")
     
     np.save(X_path, np.array(X))
     np.save(y_path, np.array(y))

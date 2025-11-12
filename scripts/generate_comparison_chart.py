@@ -3,6 +3,7 @@
 生成v1和v2系统性能对比图表
 """
 
+import os
 import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
@@ -102,7 +103,10 @@ plt.suptitle('太极拳起势动作评估系统 - v1 vs v2 全面对比',
             fontsize=16, fontweight='bold', y=0.98)
 plt.tight_layout()
 
-output_path = 'system_comparison_v1_v2.png'
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPORTS_DIR = os.path.join(PROJECT_ROOT, 'reports')
+os.makedirs(REPORTS_DIR, exist_ok=True)
+output_path = os.path.join(REPORTS_DIR, 'system_comparison_v1_v2.png')
 plt.savefig(output_path, dpi=150, bbox_inches='tight')
 print(f"[OK] 对比图表已保存到: {output_path}")
 plt.close()

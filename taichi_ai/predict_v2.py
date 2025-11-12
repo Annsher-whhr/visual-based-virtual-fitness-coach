@@ -26,13 +26,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
 # 优先使用v2版本的模型
-MODEL_PATH = os.path.join(PROJECT_ROOT, 'taichi_mlp_v2.h5')
-SCALER_PATH = os.path.join(BASE_DIR, 'scaler.pkl')
+MODELS_DIR = os.path.join(PROJECT_ROOT, 'data', 'models')
+TRAINING_DIR = os.path.join(PROJECT_ROOT, 'data', 'training')
+MODEL_PATH = os.path.join(MODELS_DIR, 'taichi_mlp_v2.h5')
+SCALER_PATH = os.path.join(TRAINING_DIR, 'scaler.pkl')
 
-# 如果v2不存在，回退到v1
+# 如果v2不存在，回退到v1（向后兼容）
 if not os.path.exists(MODEL_PATH):
-    MODEL_PATH = os.path.join(PROJECT_ROOT, 'taichi_mlp.h5')
-    SCALER_PATH = None
+    MODEL_PATH = os.path.join(PROJECT_ROOT, 'archive', 'v1', 'taichi_mlp.h5')
+    SCALER_PATH = None  # v1可能没有scaler
     print("[WARNING] 未找到v2模型，使用v1模型（不支持标准化）")
 
 if not os.path.exists(MODEL_PATH):
@@ -246,7 +248,10 @@ if __name__ == "__main__":
     print("="*60)
     
     # 尝试加载标准帧数据进行测试
-    standard_path = os.path.join(PROJECT_ROOT, "qishi3_standard_frames.json")
+    standard_path = os.path.join(PROJECT_ROOT, "data", "standard", "qishi3_standard_frames.json")
+    # 向后兼容旧路径
+    if not os.path.exists(standard_path):
+        standard_path = os.path.join(PROJECT_ROOT, "qishi3_standard_frames.json")
     
     if os.path.exists(standard_path):
         with open(standard_path, 'r', encoding='utf-8') as f:

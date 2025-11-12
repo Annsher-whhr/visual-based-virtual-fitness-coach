@@ -276,7 +276,7 @@ if __name__ == "__main__":
     print("步骤1: 提取视频所有帧的特征...")
     features_list = extract_all_features_from_video(
         video_path, 
-        output_json="qishi3_all_features.json",
+        output_json=os.path.join("data", "standard", "qishi3_all_features.json"),
         verbose=True
     )
     
@@ -321,7 +321,10 @@ if __name__ == "__main__":
         'standard_features': standard_features
     }
     
-    output_path = "qishi3_standard_frames.json"
+    # 确保输出目录存在
+    output_dir = os.path.join("data", "standard")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "qishi3_standard_frames.json")
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
     

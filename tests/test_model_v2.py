@@ -30,11 +30,13 @@ print("加载数据和模型...")
 print("=" * 60)
 
 # 加载数据
-X = np.load(os.path.join(BASE_DIR, 'taichi_ai', 'X.npy'))
-y = np.load(os.path.join(BASE_DIR, 'taichi_ai', 'y.npy'))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+DATA_DIR = os.path.join(PROJECT_ROOT, 'data', 'training')
+X = np.load(os.path.join(DATA_DIR, 'X.npy'))
+y = np.load(os.path.join(DATA_DIR, 'y.npy'))
 
 # 加载标准化器
-scaler_path = os.path.join(BASE_DIR, 'taichi_ai', 'scaler.pkl')
+scaler_path = os.path.join(DATA_DIR, 'scaler.pkl')
 if os.path.exists(scaler_path):
     scaler = joblib.load(scaler_path)
     X_scaled = scaler.transform(X)
@@ -44,7 +46,8 @@ else:
     X_scaled = scaler.fit_transform(X)
 
 # 加载模型
-model_path = os.path.join(BASE_DIR, 'taichi_mlp_v2.h5')
+MODELS_DIR = os.path.join(PROJECT_ROOT, 'data', 'models')
+model_path = os.path.join(MODELS_DIR, 'taichi_mlp_v2.h5')
 model = keras.models.load_model(model_path)
 
 print(f"[OK] 数据加载完成")
@@ -223,7 +226,9 @@ plt.suptitle('太极拳起势动作评估模型 v2.0 - 评估报告 (20帧输入
             fontsize=16, fontweight='bold', y=0.995)
 plt.tight_layout()
 
-output_path = 'model_evaluation_report_v2.png'
+REPORTS_DIR = os.path.join(PROJECT_ROOT, 'reports')
+os.makedirs(REPORTS_DIR, exist_ok=True)
+output_path = os.path.join(REPORTS_DIR, 'model_evaluation_report_v2.png')
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 print(f"[OK] 可视化图表已保存为: {output_path}\n")
 plt.close()

@@ -19,8 +19,10 @@ layers = tf.keras.layers
 
 # 加载数据集
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-X_PATH = os.path.join(BASE_DIR, "X.npy")
-Y_PATH = os.path.join(BASE_DIR, "y.npy")
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+DATA_DIR = os.path.join(PROJECT_ROOT, "data", "training")
+X_PATH = os.path.join(DATA_DIR, "X.npy")
+Y_PATH = os.path.join(DATA_DIR, "y.npy")
 
 if not os.path.exists(X_PATH) or not os.path.exists(Y_PATH):
     raise FileNotFoundError(
@@ -141,13 +143,15 @@ print(f"  真负例: {cm[0,0]}, 假正例: {cm[0,1]}")
 print(f"  假负例: {cm[1,0]}, 真正例: {cm[1,1]}\n")
 
 # === 保存模型 ===
-model_path = os.path.join(os.path.dirname(BASE_DIR), "taichi_mlp_v2.h5")
+MODELS_DIR = os.path.join(PROJECT_ROOT, "data", "models")
+os.makedirs(MODELS_DIR, exist_ok=True)
+model_path = os.path.join(MODELS_DIR, "taichi_mlp_v2.h5")
 model.save(model_path)
 print(f"[OK] 模型已保存到: {model_path}\n")
 
 # 同时保存标准化器
 import joblib
-scaler_path = os.path.join(BASE_DIR, "scaler.pkl")
+scaler_path = os.path.join(DATA_DIR, "scaler.pkl")
 joblib.dump(scaler, scaler_path)
 print(f"[OK] 标准化器已保存到: {scaler_path}\n")
 
@@ -216,7 +220,9 @@ for bar, value in zip(bars, metrics_values):
 plt.suptitle(f'太极拳起势动作评估模型训练报告 (20帧输入)', fontsize=16, y=0.995)
 plt.tight_layout()
 
-report_path = os.path.join(os.path.dirname(BASE_DIR), "model_evaluation_report_v2.png")
+REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
+os.makedirs(REPORTS_DIR, exist_ok=True)
+report_path = os.path.join(REPORTS_DIR, "model_evaluation_report_v2.png")
 plt.savefig(report_path, dpi=150, bbox_inches='tight')
 print(f"[OK] 训练报告已保存到: {report_path}\n")
 plt.close()
