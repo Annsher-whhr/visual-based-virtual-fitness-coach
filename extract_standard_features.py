@@ -97,14 +97,14 @@ def detect_action_boundaries(features_list, fps=30, verbose=True, force_start_fr
     检测起势动作的开始和结束帧
     
     基于以下特征变化来检测：
-    1. 开始: 从第一帧开始（完整动作）或自动检测
+    1. 开始: 身体直立（膝盖较直 < 10°, 躯干角度小 < 5°） + 左腿开始往左张开（脚距较小但开始增大） + 手臂保持不动（较低且稳定）
     2. 结束: knee_bend_average 达到峰值 + foot_distance 达到最大值并稳定
     
     Args:
         features_list: 所有帧的特征列表
         fps: 视频帧率（用于时间计算）
         verbose: 是否打印详细信息
-        force_start_from_beginning: 是否强制从第一帧开始（默认True）
+        force_start_from_beginning: 是否强制从第一帧开始（默认True，用于标准数据提取）
     
     Returns:
         (start_idx, end_idx): 起势动作的开始和结束帧索引
