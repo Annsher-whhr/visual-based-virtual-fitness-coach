@@ -131,48 +131,79 @@ def generate_camera_frames():
     """生成摄像头帧流"""
     global camera, camera_active, camera_analysis_status
 
+    # 确保导入必要的模块
+    from utils.utils import draw_chinese_text
+    
+    # 初始化连续失败计数
+    consecutive_failures = 0
+    max_failures = 10
+
     while camera_active:
         if camera is None or not camera.isOpened():
+            print("摄像头未打开或不可用")
             time.sleep(0.1)
+            consecutive_failures += 1
+            if consecutive_failures > max_failures:
+                print("尝试多次后仍无法访问摄像头，将停止摄像头流")
+                break
             continue
 
         ret, frame = camera.read()
         if not ret:
-            break
+            print("无法读取摄像头帧")
+            consecutive_failures += 1
+            if consecutive_failures > max_failures:
+                print("尝试多次后仍无法读取帧，将停止摄像头流")
+                break
+            time.sleep(0.1)
+            continue
+        
+        consecutive_failures = 0  # 重置失败计数
 
-        # 检测人体
-        frame_with_detection = detect_human(frame)
-        # 姿态估计
-        pose_estimated_frame, results = estimate_pose(frame_with_detection)
-        # 动作识别
-        metrics = recognize_action(results)
-        # 提供即时反馈
-        feedback = provide_feedback(metrics)
+        try:
+            # 检测人体
+            frame_with_detection = detect_human(frame)
+            # 姿态估计
+            pose_estimated_frame, results = estimate_pose(frame_with_detection)
+            # 动作识别
+            metrics = recognize_action(results)
+            # 提供即时反馈
+            feedback = provide_feedback(metrics)
 
-        # 如果正在记录动作,保存metrics和feedback
-        with camera_analysis_lock:
+            # 如果正在记录动作,保存metrics和feedback
+            with camera_analysis_lock:
+                if camera_analysis_status['is_recording']:
+                    camera_analysis_status['metrics'].append(metrics)
+                    camera_analysis_status['feedback'].append(feedback)
+
+            # 在帧上绘制反馈信息和录制状态
+            if feedback:
+                draw_chinese_text(pose_estimated_frame, feedback, (10, 30))
+
+            # 显示录制状态
             if camera_analysis_status['is_recording']:
-                camera_analysis_status['metrics'].append(metrics)
-                camera_analysis_status['feedback'].append(feedback)
-
-        # 在帧上绘制反馈信息和录制状态
-        from utils.utils import draw_chinese_text
-        if feedback:
-            draw_chinese_text(pose_estimated_frame, feedback, (10, 30))
-
-        # 显示录制状态
-        if camera_analysis_status['is_recording']:
-            frame_count = len(camera_analysis_status['metrics'])
-            status_text = f"正在记录动作... 已记录 {frame_count} 帧"
-            draw_chinese_text(pose_estimated_frame, status_text, (10, 70),
-                            color=(0, 0, 255))  # 红色提示
+                frame_count = len(camera_analysis_status['metrics'])
+                status_text = f"正在记录动作... 已记录 {frame_count} 帧"
+                draw_chinese_text(pose_estimated_frame, status_text, (10, 70),
+                                color=(0, 0, 255))  # 红色提示
+        except Exception as e:
+            print(f"处理摄像头帧时出错: {e}")
+            pose_estimated_frame = frame  # 使用原始帧作为备份
 
         # 编码为JPEG
-        ret, buffer = cv2.imencode('.jpg', pose_estimated_frame)
-        frame_bytes = buffer.tobytes()
+        try:
+            ret, buffer = cv2.imencode('.jpg', pose_estimated_frame)
+            if not ret:
+                print("无法编码帧为JPEG")
+                time.sleep(0.1)
+                continue
+            frame_bytes = buffer.tobytes()
 
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        except Exception as e:
+            print(f"生成MJPEG流时出错: {e}")
+            time.sleep(0.1)
 
 
 @app.route('/')
@@ -318,8 +349,8 @@ def analyze_camera_action():
 
         metrics_list = camera_analysis_status['metrics']
 
-        if len(metrics_list) < 4:
-            return jsonify({'error': f'记录的帧数太少({len(metrics_list)}帧),至少需要4帧'}), 400
+        if len(metrics_list) < 20:
+            return jsonify({'error': f'记录的帧数太少({len(metrics_list)}帧),至少需要20帧'}), 400
 
     # 在后台线程中进行分析
     def analyze_in_background():

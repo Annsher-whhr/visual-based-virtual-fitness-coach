@@ -53,6 +53,34 @@ async function handleVideoUpload(event) {
         return;
     }
 
+    // 显示上传的视频在前端
+    const videoPlayer = document.createElement('video');
+    videoPlayer.id = 'uploadedVideoPlayer';
+    videoPlayer.controls = true;
+    videoPlayer.width = '100%';
+    videoPlayer.style.maxHeight = '400px';
+    videoPlayer.style.marginBottom = '15px';
+
+    // 创建视频URL
+    const videoURL = URL.createObjectURL(file);
+    videoPlayer.src = videoURL;
+
+    // 先移除已有的视频播放器
+    const existingPlayer = document.getElementById('uploadedVideoPlayer');
+    if (existingPlayer) {
+        existingPlayer.remove();
+        URL.revokeObjectURL(existingPlayer.src); // 释放之前的URL对象
+    }
+
+    // 将视频播放器添加到视频容器
+    const videoContainer = videoPlaceholder.parentElement;
+    videoContainer.insertBefore(videoPlayer, videoPlaceholder);
+
+    // 当视频加载完成后，可以播放视频
+    videoPlayer.onloadedmetadata = function () {
+        console.log('视频已加载，时长:', videoPlayer.duration);
+    };
+
     const formData = new FormData();
     formData.append('video', file);
 
@@ -89,11 +117,43 @@ async function startCamera() {
 
         if (response.ok) {
             isCameraActive = true;
+
+            // 隐藏上传的视频播放器（如果存在）
+            const existingPlayer = document.getElementById('uploadedVideoPlayer');
+            if (existingPlayer) {
+                existingPlayer.style.display = 'none';
+            }
+
+            // 设置摄像头流源
             cameraFeed.src = '/api/camera/feed?' + new Date().getTime();
             cameraFeed.style.display = 'block';
             videoPlaceholder.style.display = 'none';
             startCameraBtn.style.display = 'none';
             stopCameraBtn.style.display = 'block';
+
+            // 添加错误处理
+            cameraFeed.onerror = function () {
+                console.error('摄像头流加载失败');
+                showNotification('摄像头流加载失败，请检查摄像头是否可用', 'error');
+            };
+
+            // 定期检查摄像头流是否正常工作
+            if (window.cameraFeedCheckInterval) {
+                clearInterval(window.cameraFeedCheckInterval);
+            }
+            window.cameraFeedCheckInterval = setInterval(() => {
+                if (cameraFeed.src && isCameraActive) {
+                    // 如果摄像头流停止更新，可以尝试重新加载
+                    if (cameraFeed.complete && !cameraFeed.naturalHeight) {
+                        console.warn('摄像头流似乎已停止，尝试重新加载');
+                        cameraFeed.src = '';
+                        setTimeout(() => {
+                            cameraFeed.src = '/api/camera/feed?' + new Date().getTime();
+                        }, 100);
+                    }
+                }
+            }, 5000); // 每5秒检查一次
+
             showNotification(data.message, 'success');
         } else {
             showNotification(data.error || '启动摄像头失败', 'error');
@@ -113,19 +173,46 @@ async function stopCamera() {
 
         const data = await response.json();
 
-        if (response.ok) {
+        if (response.ok || data) { // 检查response或data
             isCameraActive = false;
+
+            // 清除摄像头流定时器
+            if (window.cameraFeedCheckInterval) {
+                clearInterval(window.cameraFeedCheckInterval);
+                window.cameraFeedCheckInterval = null;
+            }
+
+            // 清空摄像头流源，释放资源
+            cameraFeed.src = '';
             cameraFeed.style.display = 'none';
+
+            // 显示视频占位符
             videoPlaceholder.style.display = 'flex';
+
+            // 更新按钮状态
             startCameraBtn.style.display = 'block';
             stopCameraBtn.style.display = 'none';
-            showNotification(data.message, 'success');
+
+            showNotification(data.message || '摄像头已停止', 'success');
         } else {
             showNotification(data.error || '停止摄像头失败', 'error');
         }
     } catch (error) {
         console.error('Stop camera error:', error);
         showNotification('停止摄像头失败', 'error');
+
+        // 即使出错也要清理定时器和状态
+        if (window.cameraFeedCheckInterval) {
+            clearInterval(window.cameraFeedCheckInterval);
+            window.cameraFeedCheckInterval = null;
+        }
+
+        isCameraActive = false;
+        cameraFeed.src = '';
+        cameraFeed.style.display = 'none';
+        videoPlaceholder.style.display = 'flex';
+        startCameraBtn.style.display = 'block';
+        stopCameraBtn.style.display = 'none';
     }
 }
 
