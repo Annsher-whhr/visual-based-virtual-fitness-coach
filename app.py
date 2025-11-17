@@ -36,6 +36,16 @@ camera_active = False
 camera = None
 camera_lock = threading.Lock()
 
+# 摄像头分析状态 - 用于记录动作并分析
+camera_analysis_status = {
+    'is_recording': False,      # 是否正在记录动作
+    'metrics': [],              # 存储所有帧的特征数据
+    'feedback': [],             # 存储每帧的反馈信息
+    'start_time': None,         # 开始记录时间
+    'final_result': None        # 最终分析结果
+}
+camera_analysis_lock = threading.Lock()
+
 
 def allowed_file(filename):
     """检查文件扩展名是否允许"""
@@ -119,7 +129,7 @@ def process_video_file(video_path):
 
 def generate_camera_frames():
     """生成摄像头帧流"""
-    global camera, camera_active
+    global camera, camera_active, camera_analysis_status
 
     while camera_active:
         if camera is None or not camera.isOpened():
@@ -139,10 +149,23 @@ def generate_camera_frames():
         # 提供即时反馈
         feedback = provide_feedback(metrics)
 
-        # 在帧上绘制反馈信息
+        # 如果正在记录动作,保存metrics和feedback
+        with camera_analysis_lock:
+            if camera_analysis_status['is_recording']:
+                camera_analysis_status['metrics'].append(metrics)
+                camera_analysis_status['feedback'].append(feedback)
+
+        # 在帧上绘制反馈信息和录制状态
         from utils.utils import draw_chinese_text
         if feedback:
             draw_chinese_text(pose_estimated_frame, feedback, (10, 30))
+
+        # 显示录制状态
+        if camera_analysis_status['is_recording']:
+            frame_count = len(camera_analysis_status['metrics'])
+            status_text = f"正在记录动作... 已记录 {frame_count} 帧"
+            draw_chinese_text(pose_estimated_frame, status_text, (10, 70),
+                            color=(0, 0, 255))  # 红色提示
 
         # 编码为JPEG
         ret, buffer = cv2.imencode('.jpg', pose_estimated_frame)
@@ -240,6 +263,135 @@ def evaluate_action():
     data = request.json
     # 这里可以根据需要实现实时评估逻辑
     return jsonify({'message': '功能开发中'})
+
+
+@app.route('/api/camera/start_recording', methods=['POST'])
+def start_recording():
+    """开始记录摄像头动作"""
+    global camera_analysis_status
+
+    with camera_analysis_lock:
+        if not camera_active:
+            return jsonify({'error': '请先启动摄像头'}), 400
+
+        if camera_analysis_status['is_recording']:
+            return jsonify({'error': '已经在记录中'}), 400
+
+        # 重置并开始记录
+        camera_analysis_status = {
+            'is_recording': True,
+            'metrics': [],
+            'feedback': [],
+            'start_time': time.time(),
+            'final_result': None
+        }
+
+    return jsonify({'message': '开始记录动作'})
+
+
+@app.route('/api/camera/stop_recording', methods=['POST'])
+def stop_recording():
+    """停止记录摄像头动作"""
+    global camera_analysis_status
+
+    with camera_analysis_lock:
+        if not camera_analysis_status['is_recording']:
+            return jsonify({'error': '当前没有在记录'}), 400
+
+        camera_analysis_status['is_recording'] = False
+        frame_count = len(camera_analysis_status['metrics'])
+
+    return jsonify({
+        'message': '停止记录动作',
+        'frame_count': frame_count
+    })
+
+
+@app.route('/api/camera/analyze', methods=['POST'])
+def analyze_camera_action():
+    """分析已记录的摄像头动作"""
+    global camera_analysis_status
+
+    with camera_analysis_lock:
+        if camera_analysis_status['is_recording']:
+            return jsonify({'error': '请先停止记录'}), 400
+
+        metrics_list = camera_analysis_status['metrics']
+
+        if len(metrics_list) < 4:
+            return jsonify({'error': f'记录的帧数太少({len(metrics_list)}帧),至少需要4帧'}), 400
+
+    # 在后台线程中进行分析
+    def analyze_in_background():
+        global camera_analysis_status
+        try:
+            from taichi_ai.predict_v2 import predict_quality
+            from frame_selector_v2 import select_frames_evenly
+
+            # 使用均匀选帧(默认20帧)
+            # 假设摄像头FPS为30
+            fps = 30
+
+            indices, selected_frames = select_frames_evenly(
+                metrics_list,
+                n_frames=20,
+                auto_detect_boundaries=True,
+                fps=fps,
+                verbose=False
+            )
+
+            # 调用模型预测
+            pred = predict_quality(selected_frames)
+            final_result = {
+                'score': float(pred.get('score', 0)),
+                'advice': pred.get('advice', '无'),
+                'selected_frame_indices': indices,
+                'total_frames': len(metrics_list)
+            }
+
+            with camera_analysis_lock:
+                camera_analysis_status['final_result'] = final_result
+
+        except Exception as e:
+            print(f'摄像头动作分析出错: {e}')
+            with camera_analysis_lock:
+                camera_analysis_status['final_result'] = {'error': str(e)}
+
+    thread = threading.Thread(target=analyze_in_background)
+    thread.start()
+
+    return jsonify({
+        'message': '正在分析动作...',
+        'frame_count': len(metrics_list)
+    })
+
+
+@app.route('/api/camera/analysis_status')
+def get_camera_analysis_status():
+    """获取摄像头分析状态"""
+    with camera_analysis_lock:
+        return jsonify({
+            'is_recording': camera_analysis_status['is_recording'],
+            'frame_count': len(camera_analysis_status['metrics']),
+            'final_result': camera_analysis_status['final_result']
+        })
+
+
+@app.route('/api/camera/reset', methods=['POST'])
+def reset_camera_analysis():
+    """重置摄像头分析数据"""
+    global camera_analysis_status
+
+    with camera_analysis_lock:
+        camera_analysis_status = {
+            'is_recording': False,
+            'metrics': [],
+            'feedback': [],
+            'start_time': None,
+            'final_result': None
+        }
+
+    return jsonify({'message': '摄像头分析数据已重置'})
 
 
 if __name__ == '__main__':

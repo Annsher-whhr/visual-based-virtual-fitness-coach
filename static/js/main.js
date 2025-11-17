@@ -1,7 +1,9 @@
 // 全局变量
 let isProcessing = false;
 let isCameraActive = false;
+let isCameraRecording = false;  // 摄像头录制状态
 let statusCheckInterval = null;
+let cameraAnalysisInterval = null;  // 摄像头分析状态轮询
 
 // DOM元素
 const videoUpload = document.getElementById('videoUpload');
@@ -396,3 +398,185 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// ==================== 摄像头分析功能 ====================
+
+// 开始记录摄像头动作
+async function startCameraRecording() {
+    try {
+        const response = await fetch('/api/camera/start_recording', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            isCameraRecording = true;
+            const recordBtn = document.getElementById('startRecordBtn');
+            const stopRecordBtn = document.getElementById('stopRecordBtn');
+            if (recordBtn) recordBtn.style.display = 'none';
+            if (stopRecordBtn) stopRecordBtn.style.display = 'block';
+            showNotification('开始记录动作...', 'success');
+        } else {
+            showNotification(data.error || '开始记录失败', 'error');
+        }
+    } catch (error) {
+        console.error('Start recording error:', error);
+        showNotification('开始记录失败', 'error');
+    }
+}
+
+// 停止记录摄像头动作
+async function stopCameraRecording() {
+    try {
+        const response = await fetch('/api/camera/stop_recording', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            isCameraRecording = false;
+            const recordBtn = document.getElementById('startRecordBtn');
+            const stopRecordBtn = document.getElementById('stopRecordBtn');
+            const analyzeBtn = document.getElementById('analyzeCameraBtn');
+            if (recordBtn) recordBtn.style.display = 'block';
+            if (stopRecordBtn) stopRecordBtn.style.display = 'none';
+            if (analyzeBtn) analyzeBtn.disabled = false;
+            showNotification(`停止记录,已记录${data.frame_count}帧`, 'success');
+        } else {
+            showNotification(data.error || '停止记录失败', 'error');
+        }
+    } catch (error) {
+        console.error('Stop recording error:', error);
+        showNotification('停止记录失败', 'error');
+    }
+}
+
+// 分析摄像头动作
+async function analyzeCameraAction() {
+    try {
+        const response = await fetch('/api/camera/analyze', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showNotification('正在分析动作,请稍候...', 'info');
+            const analyzeBtn = document.getElementById('analyzeCameraBtn');
+            if (analyzeBtn) analyzeBtn.disabled = true;
+
+            // 开始轮询分析状态
+            startCameraAnalysisPolling();
+        } else {
+            showNotification(data.error || '分析失败', 'error');
+        }
+    } catch (error) {
+        console.error('Analyze camera action error:', error);
+        showNotification('分析失败', 'error');
+    }
+}
+
+// 开始轮询摄像头分析状态
+function startCameraAnalysisPolling() {
+    if (cameraAnalysisInterval) {
+        clearInterval(cameraAnalysisInterval);
+    }
+
+    evaluationPlaceholder.style.display = 'block';
+    evaluationPlaceholder.textContent = '正在分析中...';
+    scoreDisplay.style.display = 'none';
+    adviceContent.innerHTML = '';
+
+    cameraAnalysisInterval = setInterval(checkCameraAnalysisStatus, 1000);
+}
+
+// 检查摄像头分析状态
+async function checkCameraAnalysisStatus() {
+    try {
+        const response = await fetch('/api/camera/analysis_status');
+        const status = await response.json();
+
+        if (status.final_result) {
+            stopCameraAnalysisPolling();
+            displayCameraAnalysisResults(status.final_result);
+        }
+    } catch (error) {
+        console.error('Check camera analysis status error:', error);
+    }
+}
+
+// 停止轮询摄像头分析状态
+function stopCameraAnalysisPolling() {
+    if (cameraAnalysisInterval) {
+        clearInterval(cameraAnalysisInterval);
+        cameraAnalysisInterval = null;
+    }
+}
+
+// 显示摄像头分析结果
+function displayCameraAnalysisResults(result) {
+    if (result && !result.error) {
+        evaluationPlaceholder.style.display = 'none';
+        scoreDisplay.style.display = 'block';
+
+        // 显示分数
+        const score = Math.round(result.score * 100);
+        animateScore(score);
+
+        // 显示建议
+        if (result.advice) {
+            adviceContent.innerHTML = `
+                <div class="advice-item">
+                    <strong>AI建议：</strong><br>
+                    ${result.advice}
+                </div>
+                <div class="advice-item" style="margin-top: 10px;">
+                    <small>分析帧数: ${result.total_frames} 帧，选取: ${result.selected_frame_indices ? result.selected_frame_indices.length : 20} 帧</small>
+                </div>
+            `;
+        }
+
+        showNotification('动作分析完成！', 'success');
+
+        // 重新启用分析按钮
+        const analyzeBtn = document.getElementById('analyzeCameraBtn');
+        if (analyzeBtn) analyzeBtn.disabled = false;
+    } else if (result && result.error) {
+        evaluationPlaceholder.textContent = `分析出错: ${result.error}`;
+        showNotification('分析过程中出现错误', 'error');
+
+        const analyzeBtn = document.getElementById('analyzeCameraBtn');
+        if (analyzeBtn) analyzeBtn.disabled = false;
+    }
+}
+
+// 重置摄像头分析数据
+async function resetCameraAnalysis() {
+    try {
+        const response = await fetch('/api/camera/reset', {
+            method: 'POST'
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // 清空显示
+            scoreDisplay.style.display = 'none';
+            evaluationPlaceholder.style.display = 'block';
+            evaluationPlaceholder.textContent = '请先记录动作，然后点击分析按钮';
+            adviceContent.innerHTML = '';
+
+            const analyzeBtn = document.getElementById('analyzeCameraBtn');
+            if (analyzeBtn) analyzeBtn.disabled = true;
+
+            showNotification('已重置分析数据', 'success');
+        } else {
+            showNotification(data.error || '重置失败', 'error');
+        }
+    } catch (error) {
+        console.error('Reset camera analysis error:', error);
+        showNotification('重置失败', 'error');
+    }
+}

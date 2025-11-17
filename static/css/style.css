@@ -170,6 +170,36 @@ body {
     box-shadow: var(--shadow-hover);
 }
 
+.btn-warning {
+    background: var(--warning-color);
+}
+
+.btn-warning:hover {
+    background: #d48806;
+    box-shadow: var(--shadow-hover);
+}
+
+.btn-secondary {
+    background: #95a5a6;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+    box-shadow: var(--shadow-hover);
+}
+
+.btn:disabled {
+    background: #d3d3d3;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn:disabled:hover {
+    background: #d3d3d3;
+    box-shadow: var(--shadow);
+    transform: none;
+}
+
 .icon {
     width: 20px;
     height: 20px;
@@ -212,53 +242,56 @@ body {
 .results-container {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 15px;
 }
 
 .feedback-card,
 .evaluation-card,
 .metrics-card {
     background: var(--card-bg);
-    border-radius: 15px;
-    padding: 20px;
+    border-radius: 12px;
+    padding: 15px;
     box-shadow: var(--shadow);
 }
 
 .card-title {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 1.2rem;
-    margin-bottom: 15px;
+    gap: 8px;
+    font-size: 1rem;
+    margin-bottom: 10px;
     color: var(--text-primary);
     border-bottom: 2px solid var(--border-color);
-    padding-bottom: 10px;
+    padding-bottom: 8px;
 }
 
 .feedback-content,
 .evaluation-content,
 .metrics-content {
-    min-height: 100px;
+    max-height: 250px;
+    overflow-y: auto;
+    font-size: 0.9rem;
 }
 
 .placeholder-text {
     color: var(--text-secondary);
     text-align: center;
-    padding: 20px;
+    padding: 15px;
     font-style: italic;
+    font-size: 0.85rem;
 }
 
 /* 评分圆环 */
 .score-display {
     text-align: center;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 .score-circle {
     position: relative;
-    width: 150px;
-    height: 150px;
-    margin: 0 auto 15px;
+    width: 100px;
+    height: 100px;
+    margin: 0 auto 10px;
 }
 
 .score-svg {
@@ -270,7 +303,7 @@ body {
 .score-bg,
 .score-progress {
     fill: none;
-    stroke-width: 8;
+    stroke-width: 6;
 }
 
 .score-bg {
@@ -288,33 +321,34 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 2.5rem;
+    font-size: 1.8rem;
     font-weight: 700;
     color: var(--text-primary);
 }
 
 .score-percent {
-    font-size: 1.5rem;
+    font-size: 1.1rem;
     color: var(--text-secondary);
 }
 
 .score-label {
-    font-size: 1rem;
+    font-size: 0.85rem;
     color: var(--text-secondary);
 }
 
 /* 建议内容 */
 .advice-content {
     background: #f9f9f9;
-    border-left: 4px solid var(--primary-color);
-    padding: 15px;
-    border-radius: 5px;
-    margin-top: 15px;
+    border-left: 3px solid var(--primary-color);
+    padding: 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+    font-size: 0.85rem;
 }
 
 .advice-item {
-    margin-bottom: 10px;
-    line-height: 1.6;
+    margin-bottom: 8px;
+    line-height: 1.5;
 }
 
 .advice-item:last-child {
@@ -324,37 +358,39 @@ body {
 /* 指标显示 */
 .metrics-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
 }
 
 .metric-item {
     background: #f9f9f9;
-    padding: 12px;
-    border-radius: 8px;
+    padding: 8px;
+    border-radius: 6px;
     border-left: 3px solid var(--primary-color);
 }
 
 .metric-label {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
-    margin-bottom: 5px;
+    margin-bottom: 4px;
 }
 
 .metric-value {
-    font-size: 1.2rem;
+    font-size: 1rem;
     font-weight: 600;
     color: var(--text-primary);
 }
 
 /* 反馈消息 */
 .feedback-message {
-    padding: 12px;
-    margin-bottom: 10px;
-    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 6px;
     background: #f0f9ff;
-    border-left: 4px solid var(--primary-color);
+    border-left: 3px solid var(--primary-color);
     animation: slideIn 0.3s ease;
+    font-size: 0.85rem;
+    line-height: 1.4;
 }
 
 .feedback-message.warning {
@@ -406,6 +442,33 @@ body {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* 自定义滚动条样式 */
+.feedback-content::-webkit-scrollbar,
+.evaluation-content::-webkit-scrollbar,
+.metrics-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.feedback-content::-webkit-scrollbar-track,
+.evaluation-content::-webkit-scrollbar-track,
+.metrics-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.feedback-content::-webkit-scrollbar-thumb,
+.evaluation-content::-webkit-scrollbar-thumb,
+.metrics-content::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 3px;
+}
+
+.feedback-content::-webkit-scrollbar-thumb:hover,
+.evaluation-content::-webkit-scrollbar-thumb:hover,
+.metrics-content::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }
 
 /* 响应式设计 */
