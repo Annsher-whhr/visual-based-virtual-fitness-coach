@@ -14,7 +14,7 @@ class TrajectoryMatcher:
             'left_wrist', 'right_wrist',
             'left_hip', 'right_hip',
             'left_knee', 'right_knee',
-            'left_ankle', 'right_ankle'
+            'left_ankle'
         ]
     
     def normalize_trajectory(self, trajectory):
@@ -54,7 +54,7 @@ class TrajectoryMatcher:
         advice = []
         
         upper_body = ['left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist']
-        lower_body = ['left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle']
+        lower_body = ['left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle']
         
         upper_sim = np.mean([similarities[p] for p in upper_body])
         lower_sim = np.mean([similarities[p] for p in lower_body])

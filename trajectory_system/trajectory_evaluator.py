@@ -1,3 +1,14 @@
+import os
+import sys
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['GLOG_minloglevel'] = '3'
+import warnings
+warnings.filterwarnings('ignore')
+
+import logging
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+logging.getLogger('absl').setLevel(logging.ERROR)
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -22,7 +33,7 @@ class TrajectoryEvaluator:
             'left_wrist': 15, 'right_wrist': 16,
             'left_hip': 23, 'right_hip': 24,
             'left_knee': 25, 'right_knee': 26,
-            'left_ankle': 27, 'right_ankle': 28
+            'left_ankle': 27
         }
         with mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5) as pose:
             results = pose.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))

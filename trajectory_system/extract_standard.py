@@ -16,8 +16,7 @@ KEYPOINTS = {
     'right_hip': 24,
     'left_knee': 25,
     'right_knee': 26,
-    'left_ankle': 27,
-    'right_ankle': 28
+    'left_ankle': 27
 }
 
 def extract_keypoints(image_path):
