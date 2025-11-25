@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虚拟健身教练</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏋️ 虚拟健身教练</h1>
+            <p>上传视频或使用摄像头进行动作评估</p>
+        </header>
+
+        <div class="main-content">
+            <div class="input-section">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="upload">📁 上传视频</button>
+                    <button class="tab-btn" data-tab="camera">📷 摄像头拍摄</button>
+                </div>
+
+                <div class="tab-content active" id="upload-tab">
+                    <div class="upload-area" id="uploadArea">
+                        <input type="file" id="videoInput" accept="video/*" hidden>
+                        <div class="upload-icon">📹</div>
+                        <p>点击或拖拽视频文件到此处</p>
+                        <p class="upload-hint">支持 MP4, AVI, MOV, MKV, WEBM</p>
+                    </div>
+                    <div class="file-info" id="fileInfo" style="display: none;">
+                        <p id="fileName"></p>
+                        <button class="btn btn-secondary" id="removeFile">移除</button>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="camera-tab">
+                    <div class="camera-container">
+                        <video id="cameraVideo" autoplay playsinline></video>
+                        <canvas id="cameraCanvas" style="display: none;"></canvas>
+                        <div class="camera-controls">
+                            <button class="btn btn-primary" id="startCamera">启动摄像头</button>
+                            <button class="btn btn-danger" id="stopCamera" style="display: none;">停止摄像头</button>
+                            <button class="btn btn-success" id="captureBtn" style="display: none;">开始录制</button>
+                            <button class="btn btn-warning" id="stopCapture" style="display: none;">停止录制</button>
+                        </div>
+                        <div class="recording-indicator" id="recordingIndicator" style="display: none;">
+                            <span class="recording-dot"></span>
+                            <span>正在录制...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="btn btn-primary btn-large" id="processBtn" disabled>开始分析</button>
+                </div>
+            </div>
+
+            <div class="result-section" id="resultSection" style="display: none;">
+                <h2>评估结果</h2>
+                <div class="score-display">
+                    <div class="score-circle">
+                        <div class="score-value" id="scoreValue">0</div>
+                        <div class="score-label">分</div>
+                    </div>
+                    <div class="score-level" id="scoreLevel">-</div>
+                </div>
+                
+                <div class="similarities" id="similarities"></div>
+                
+                <div class="advice-section">
+                    <h3>改进建议</h3>
+                    <ul id="adviceList"></ul>
+                </div>
+            </div>
+
+            <div class="loading" id="loading" style="display: none;">
+                <div class="spinner"></div>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p class="progress-text" id="progressText">正在分析视频，请稍候...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
+

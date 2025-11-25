@@ -8,3 +8,10 @@ mediapipe
 protobuf==3.20.3
 requests
 tensorflow
+flask
+flask-cors
+werkzeug
+scikit-learn
+fastdtw
+scipy
+joblib
