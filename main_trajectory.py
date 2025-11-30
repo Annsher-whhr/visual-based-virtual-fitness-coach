@@ -16,6 +16,32 @@ from trajectory_system.trajectory_evaluator import TrajectoryEvaluator
 from trajectory_system.smart_frame_selector import SmartFrameSelector
 
 def process_video(video_path, output_path=None, use_smart_selection=True):
+
+    """
+处理视频文件，选择关键帧并评估动作质量
+
+功能：
+    读取输入视频，选择代表性帧，评估用户动作质量并输出结果
+    支持智能选帧和均匀选帧两种方式
+
+参数：
+    video_path: str - 输入视频文件路径
+    output_path: str, optional - 输出选中帧的保存路径前缀，默认为None（不保存）
+    use_smart_selection: bool, optional - 是否使用智能选帧，默认为True
+
+返回值：
+    dict或None - 包含动作评估结果的字典，视频读取失败时返回None
+
+实现步骤：
+    1. 使用OpenCV读取视频文件
+    2. 将所有视频帧存入frames列表
+    3. 根据use_smart_selection参数选择帧方式：
+       - True：使用SmartFrameSelector智能选择最具代表性的4帧
+       - False：均匀采样4帧
+    4. 初始化TrajectoryEvaluator并评估选中的帧
+    5. 可选：保存选中的帧到指定路径
+    6. 返回评估结果
+"""
     cap = cv2.VideoCapture(video_path)
     
     frames = []
