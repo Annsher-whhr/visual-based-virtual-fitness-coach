@@ -14,6 +14,7 @@ import mediapipe as mp
 import numpy as np
 import pickle
 import joblib
+import base64
 from trajectory_system.trajectory_matcher import TrajectoryMatcher
 
 mp_pose = mp.solutions.pose
@@ -106,6 +107,12 @@ class TrajectoryEvaluator:
                 'advice': ['无法检测到完整的4帧姿势']
             }
         
+        user_images = []
+        for frame in frames:
+            _, buffer = cv2.imencode('.jpg', frame)
+            img_str = base64.b64encode(buffer).decode('utf-8')
+            user_images.append(img_str)
+
         overall, similarities, basic_advice = self.matcher.calculate_similarity(user_frames)
         detailed_advice = self.matcher.get_detailed_advice(similarities)
         
@@ -115,6 +122,9 @@ class TrajectoryEvaluator:
             'score': overall,
             'accuracy': overall / 100,
             'similarities': similarities,
-            'advice': all_advice if all_advice else ['动作标准，保持！']
+            'advice': all_advice if all_advice else ['动作标准，保持！'],
+            'user_frames': user_frames,
+            'standard_frames': self.matcher.standard_frames,
+            'user_images': user_images
         }
 

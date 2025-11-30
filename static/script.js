@@ -23,11 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadArea.addEventListener('dragover', handleDragOver);
     uploadArea.addEventListener('drop', handleDrop);
     uploadArea.addEventListener('dragleave', handleDragLeave);
-    
+
     videoInput.addEventListener('change', handleFileSelect);
     removeFile.addEventListener('click', handleRemoveFile);
     processBtn.addEventListener('click', handleProcess);
-    
+
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
@@ -89,10 +89,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.tab-content').forEach(content => {
             content.classList.remove('active');
         });
-        
+
         document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
         document.getElementById(`${tab}-tab`).classList.add('active');
-        
+
         if (tab === 'camera') {
             processBtn.disabled = true;
         } else {
@@ -102,8 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function startCameraStream() {
         try {
-            currentStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 640, height: 480 } 
+            currentStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 640, height: 480 }
             });
             cameraVideo.srcObject = currentStream;
             startCamera.style.display = 'none';
@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const ctx = canvas.getContext('2d');
         canvas.width = cameraVideo.videoWidth;
         canvas.height = cameraVideo.videoHeight;
-        
+
         const captureInterval = setInterval(() => {
             ctx.drawImage(cameraVideo, 0, 0);
             const frameData = canvas.toDataURL('image/jpeg', 0.8);
@@ -154,14 +154,14 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(window.captureInterval);
             window.captureInterval = null;
         }
-        
+
         if (capturedFrames.length >= 4) {
             processBtn.disabled = false;
             alert(`已录制 ${capturedFrames.length} 帧，可以开始分析了`);
         } else {
             alert('录制帧数不足，至少需要4帧');
         }
-        
+
         captureBtn.style.display = 'inline-block';
         stopCapture.style.display = 'none';
         recordingIndicator.style.display = 'none';
@@ -172,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const resultSection = document.getElementById('resultSection');
         const progressFill = document.getElementById('progressFill');
         const progressText = document.getElementById('progressText');
-        
+
         loading.style.display = 'block';
         resultSection.style.display = 'none';
         processBtn.disabled = true;
@@ -182,7 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             let taskId;
             const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
-            
+
             if (activeTab === 'upload') {
                 if (!selectedFile) {
                     throw new Error('请先选择视频文件');
@@ -194,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 taskId = await processFrames(capturedFrames);
             }
-            
+
             const result = await pollProgress(taskId, progressFill, progressText);
             displayResult(result);
         } catch (error) {
@@ -211,10 +211,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const response = await fetch(`/api/progress/${taskId}`);
                     const data = await response.json();
-                    
+
                     progressFill.style.width = data.progress + '%';
                     progressText.textContent = data.message || `处理中... ${data.progress}%`;
-                    
+
                     if (data.result) {
                         clearInterval(interval);
                         resolve(data.result);
@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     reject(error);
                 }
             }, 500);
-            
+
             setTimeout(() => {
                 clearInterval(interval);
                 reject(new Error('处理超时'));
@@ -238,17 +238,17 @@ document.addEventListener('DOMContentLoaded', () => {
     async function uploadAndProcess(file) {
         const formData = new FormData();
         formData.append('video', file);
-        
+
         const response = await fetch('/api/upload', {
             method: 'POST',
             body: formData
         });
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || '上传失败');
         }
-        
+
         const data = await response.json();
         return data.task_id;
     }
@@ -261,12 +261,12 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             body: JSON.stringify({ frames: frames })
         });
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.error || '处理失败');
         }
-        
+
         const data = await response.json();
         return data.task_id;
     }
@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const score = Math.round(result.score || 0);
         scoreValue.textContent = score;
-        
+
         let level = '需改进';
         let levelColor = '#e74c3c';
         if (score >= 90) {
@@ -297,17 +297,37 @@ document.addEventListener('DOMContentLoaded', () => {
             level = '中等';
             levelColor = '#f39c12';
         }
-        
+
         scoreLevel.textContent = level;
         scoreLevel.style.color = levelColor;
 
         similarities.innerHTML = '';
+        similarities.innerHTML = '';
+
+        const bodyPartTranslations = {
+            'left_shoulder': '左肩',
+            'right_shoulder': '右肩',
+            'left_elbow': '左肘',
+            'right_elbow': '右肘',
+            'left_wrist': '左腕',
+            'right_wrist': '右腕',
+            'left_hip': '左髋',
+            'right_hip': '右髋',
+            'left_knee': '左膝',
+            'right_knee': '右膝',
+            'left_ankle': '左脚踝',
+            'right_ankle': '右脚踝'
+        };
+
         if (result.similarities) {
             Object.entries(result.similarities).forEach(([part, value]) => {
                 const item = document.createElement('div');
                 item.className = 'similarity-item';
-                const partName = part.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                item.innerHTML = `
+                // Use translation or fallback to formatted English
+                const partName = bodyPartTranslations[part] || part.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+                // Main bar
+                const mainContent = `
                     <div class="similarity-label">
                         <span>${partName}</span>
                         <span>${Math.round(value)}%</span>
@@ -316,6 +336,61 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="similarity-fill" style="width: ${value}%">${Math.round(value)}%</div>
                     </div>
                 `;
+
+                // Details section
+                let detailsContent = '<div class="similarity-details">';
+
+                // Standard Frames
+                detailsContent += '<div class="frames-row"><h4>标准动作</h4><div class="frames-grid">';
+                for (let i = 0; i < 4; i++) {
+                    const kp = result.standard_frames && result.standard_frames[i] ? result.standard_frames[i][part] : null;
+                    const markerStyle = kp ? `left: ${kp[0] * 100}%; top: ${kp[1] * 100}%;` : 'display: none;';
+                    // Standard frames are 1-indexed in filename: 01.png, 02.png...
+                    detailsContent += `
+                        <div class="frame-container">
+                            <img src="/video/0${i + 1}.png" alt="Standard ${i + 1}">
+                            <div class="keypoint-marker" style="${markerStyle}"></div>
+                        </div>
+                    `;
+                }
+                detailsContent += '</div></div>';
+
+                // User Frames
+                detailsContent += '<div class="frames-row"><h4>你的动作</h4><div class="frames-grid">';
+                for (let i = 0; i < 4; i++) {
+                    const kp = result.user_frames && result.user_frames[i] ? result.user_frames[i][part] : null;
+                    const markerStyle = kp ? `left: ${kp[0] * 100}%; top: ${kp[1] * 100}%;` : 'display: none;';
+                    const imgSrc = result.user_images && result.user_images[i] ? `data:image/jpeg;base64,${result.user_images[i]}` : '';
+                    detailsContent += `
+                        <div class="frame-container">
+                            <img src="${imgSrc}" alt="User ${i + 1}">
+                            <div class="keypoint-marker" style="${markerStyle}"></div>
+                        </div>
+                    `;
+                }
+                detailsContent += '</div></div>';
+
+                detailsContent += '</div>'; // End details
+
+                item.innerHTML = mainContent + detailsContent;
+
+                item.addEventListener('click', (e) => {
+                    // Prevent toggling if clicking inside details
+                    if (e.target.closest('.similarity-details')) {
+                        return;
+                    }
+
+                    const details = item.querySelector('.similarity-details');
+                    const wasActive = details.classList.contains('active');
+
+                    // Close all others
+                    document.querySelectorAll('.similarity-details').forEach(d => d.classList.remove('active'));
+
+                    if (!wasActive) {
+                        details.classList.add('active');
+                    }
+                });
+
                 similarities.appendChild(item);
             });
         }

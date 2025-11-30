@@ -39,6 +39,10 @@ def allowed_file(filename):
 def index():
     return render_template('index.html')
 
+@app.route('/video/<path:filename>')
+def serve_video_frame(filename):
+    return send_from_directory('video', filename)
+
 @app.route('/api/progress/<task_id>', methods=['GET'])
 def get_progress(task_id):
     with progress_lock:
